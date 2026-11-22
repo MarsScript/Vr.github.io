@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Cardboard VR Target Shooter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #050811; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #render-canvas { display: block; width: 100vw; height: 100vh; }
+
+    #divider {
+      position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
+      background: rgba(255, 255, 255, 0.25); transform: translateX(-50%);
+      pointer-events: none; z-index: 5;
+    }
+
+    .reticle {
+      position: fixed; top: 50%; width: 26px; height: 26px;
+      margin-top: -13px; margin-left: -13px;
+      border: 2px solid rgba(0, 240, 255, 0.85);
+      border-radius: 50%; pointer-events: none; z-index: 6;
+      transition: transform 0.1s ease, border-color 0.1s ease;
+    }
+    .reticle.left { left: 25%; }
+    .reticle.right { left: 75%; }
+    .reticle.locking {
+      border-color: #ff2a6d;
+      transform: scale(1.35);
+    }
+    .reticle-fill {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: rgba(255, 42, 109, 0.45);
+      transform: scale(0);
+    }
+
+    .hud {
+      position: fixed; top: 14px; font-size: 14px; font-weight: 700;
+      letter-spacing: 0.5px; pointer-events: none; z-index: 6;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    }
+    .hud.left { left: 25%; transform: translateX(-50%); }
+    .hud.right { left: 75%; transform: translateX(-50%); }
+
+    #overlay {
+      position: fixed; inset: 0; background: rgba(5, 8, 17, 0.92);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 24px; z-index: 20;
+    }
+    #overlay h1 { font-size: 26px; margin-bottom: 10px; color: #00f0ff; }
+    #overlay p { max-width: 440px; font-size: 14px; line-height: 1.5; color: #cbd5e1; margin-bottom: 22px; }
+    #start-btn {
+      background: linear-gradient(135deg, #00f0ff, #0077ff);
+      color: #050811; border: none; border-radius: 12px;
+      padding: 16px 28px; font-size: 17px; font-weight: 800;
+      cursor: pointer; box-shadow: 0 8px 25px rgba(0, 240, 255, 0.35);
+    }
+    #start-btn:active { transform: scale(0.97); }
+    #status { margin-top: 14px; font-size: 13px; color: #fbbf24; max-width: 440px; }
+  </style>
+</head>
+<body>
+  <canvas id="render-canvas"></canvas>
+  <div id="divider"></div>
+
+  <div class="reticle left" id="reticle-l"><div class="reticle-fill" id="fill-l"></div></div>
+  <div class="reticle right" id="reticle-r"><div class="reticle-fill" id="fill-r"></div></div>
+
+  <div class="hud left" id="hud-l">SCORE: 0</div>
+  <div class="hud right" id="hud-r">SCORE: 0</div>
+
+  <div id="overlay">
+    <h1>Cardboard VR Shooter</h1>
+    <p>
+      Rotate your iPad to <strong>Landscape</strong>, tap below to unlock head tracking, and place it into your headset.<br><br>
+      <strong>How to play:</strong> Look directly at glowing targets to lock on and fire automatically!
+    </p>
+    <button id="start-btn">Enter VR &amp; Enable Gyroscope</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    // Minimal standalone WebGL 3D Engine (zero external dependencies)
+    const canvas = document.getElementById('render-canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('start-btn');
+    const statusEl = document.getElementById('status');
+    const hudL = document.getElementById('hud-l');
+    const hudR = document.getElementById('hud-r');
+    const retL = document.getElementById('reticle-l');
+    const retR = document.getElementById('reticle-r');
+    const fillL = document.getElementById('fill-l');
+    const fillR = document.getElementById('fill-r');
+
+    const vsSource = `
+      attribute vec3 aPos;
+      attribute vec3 aNormal;
+      uniform mat4 uProj;
+      uniform mat4 uView;
+      uniform mat4 uModel;
+      varying vec3 vNormal;
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 worldPos = uModel * vec4(aPos, 1.0);
+        vWorldPos = worldPos.xyz;
+        vNormal = mat3(uModel) * aNormal;
+        gl_Position = uProj * uView * worldPos;
+      }
+    `;
+
+    const fsSource = `
+      precision mediump float;
+      varying vec3 vNormal;
+      varying vec3 vWorldPos;
+      uniform vec3 uColor;
+      uniform float uIsGrid;
+      void main() {
+        if (uIsGrid > 0.5) {
+          vec2 coord = vWorldPos.xz;
+          vec2 grid = abs(fract(coord - 0.5) - 0.5) / 0.04;
+          float line = min(grid.x, grid.y);
+          float alpha = 1.0 - min(line, 1.0);
+          float dist = length(vWorldPos.xz);
+          float fade = max(0.0, 1.0 - dist / 28.0);
+          gl_FragColor = vec4(0.0, 0.85, 1.0, alpha * fade * 0.45);
+        } else {
+          vec3 n = normalize(vNormal);
+          vec3 lightDir = normalize(vec3(0.4, 1.0, 0.6));
+          float diff = max(dot(n, lightDir), 0.25);
+          gl_FragColor = vec4(uColor * diff + uColor * 0.25, 1.0);
+        }
+      }
+    `;
+
+    function compileShader(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSource));
+    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSource));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    const aPos = gl.getAttribLocation(prog, 'aPos');
+    const aNormal = gl.getAttribLocation(prog, 'aNormal');
+    const uProj = gl.getUniformLocation(prog, 'uProj');
+    const uView = gl.getUniformLocation(prog, 'uView');
+    const uModel = gl.getUniformLocation(prog, 'uModel');
+    const uColor = gl.getUniformLocation(prog, 'uColor');
+    const uIsGrid = gl.getUniformLocation(prog, 'uIsGrid');
+
+    // Cube geometry for targets
+    const cubeVerts = new Float32Array([
+      -0.5,-0.5, 0.5,  0, 0, 1,   0.5,-0.5, 0.5,  0, 0, 1,   0.5, 0.5, 0.5,  0, 0, 1,
+      -0.5,-0.5, 0.5,  0, 0, 1,   0.5, 0.5, 0.5,  0, 0, 1,  -0.5, 0.5, 0.5,  0, 0, 1,
+      -0.5,-0.5,-0.5,  0, 0,-1,  -0.5, 0.5,-0.5,  0, 0,-1,   0.5, 0.5,-0.5,  0, 0,-1,
+      -0.5,-0.5,-0.5,  0, 0,-1,   0.5, 0.5,-0.5,  0, 0,-1,   0.5,-0.5,-0.5,  0, 0,-1,
+      -0.5, 0.5,-0.5,  0, 1, 0,  -0.5, 0.5, 0.5,  0, 1, 0,   0.5, 0.5, 0.5,  0, 1, 0,
+      -0.5, 0.5,-0.5,  0, 1, 0,   0.5, 0.5, 0.5,  0, 1, 0,   0.5, 0.5,-0.5,  0, 1, 0,
+      -0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5, 0.5,  0,-1, 0,
+      -0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5, 0.5,  0,-1, 0,  -0.5,-0.5, 0.5,  0,-1, 0,
+       0.5,-0.5,-0.5,  1, 0, 0,   0.5, 0.5,-0.5,  1, 0, 0,   0.5, 0.5, 0.5,  1, 0, 0,
+       0.5,-0.5,-0.5,  1, 0, 0,   0.5, 0.5, 0.5,  1, 0, 0,   0.5,-0.5, 0.5,  1, 0, 0,
+      -0.5,-0.5,-0.5, -1, 0, 0,  -0.5,-0.5, 0.5, -1, 0, 0,  -0.5, 0.5, 0.5, -1, 0, 0,
+      -0.5,-0.5,-0.5, -1, 0, 0,  -0.5, 0.5, 0.5, -1, 0, 0,  -0.5, 0.5,-0.5, -1, 0, 0
+    ]);
+    const cubeBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, cubeVerts, gl.STATIC_DRAW);
+
+    // Floor plane geometry
+    const floorVerts = new Float32Array([
+      -30, 0, -30,  0,1,0,   30, 0, -30,  0,1,0,   30, 0,  30,  0,1,0,
+      -30, 0, -30,  0,1,0,   30, 0,  30,  0,1,0,  -30, 0,  30,  0,1,0
+    ]);
+    const floorBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, floorBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, floorVerts, gl.STATIC_DRAW);
+
+    // Matrix helpers
+    function mat4Identity() {
+      return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+    }
+    function mat4Perspective(fov, aspect, near, far) {
+      const f = 1.0 / Math.tan(fov / 2);
+      const nf = 1 / (near - far);
+      return new Float32Array([
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far + near) * nf, -1,
+        0, 0, (2 * far * near) * nf, 0
+      ]);
+    }
+    function mat4Multiply(a, b) {
+      const out = new Float32Array(16);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          out[j * 4 + i] =
+            a[0 * 4 + i] * b[j * 4 + 0] +
+            a[1 * 4 + i] * b[j * 4 + 1] +
+            a[2 * 4 + i] * b[j * 4 + 2] +
+            a[3 * 4 + i] * b[j * 4 + 3];
+        }
+      }
+      return out;
+    }
+    function mat4FromQuat(q) {
+      const [x, y, z, w] = q;
+      const x2 = x + x, y2 = y + y, z2 = z + z;
+      const xx = x * x2, xy = x * y2, xz = x * z2;
+      const yy = y * y2, yz = y * z2, zz = z * z2;
+      const wx = w * x2, wy = w * y2, wz = w * z2;
+      return new Float32Array([
+        1 - (yy + zz), xy + wz, xz - wy, 0,
+        xy - wz, 1 - (xx + zz), yz + wx, 0,
+        xz + wy, yz - wx, 1 - (xx + yy), 0,
+        0, 0, 0, 1
+      ]);
+    }
+    function quatMultiply(a, b) {
+      return [
+        a[0]*b[3] + a[3]*b[0] + a[1]*b[2] - a[2]*b[1],
+        a[1]*b[3] + a[3]*b[1] + a[2]*b[0] - a[0]*b[2],
+        a[2]*b[3] + a[3]*b[2] + a[0]*b[1] - a[1]*b[0],
+        a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2]
+      ];
+    }
+    function quatConjugate(q) { return [-q[0], -q[1], -q[2], q[3]]; }
+    function quatFromEulerYXZ(x, y, z) {
+      const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
+      const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
+      return [
+        s1 * c2 * c3 + c1 * s2 * s3,
+        c1 * s2 * c3 - s1 * c2 * s3,
+        c1 * c2 * s3 - s1 * s2 * c3,
+        c1 * c2 * c3 + s1 * s2 * s3
+      ];
+    }
+    function quatFromAxisAngle(ax, ay, az, angle) {
+      const half = angle / 2, s = Math.sin(half);
+      return [ax * s, ay * s, az * s, Math.cos(half)];
+    }
+
+    // Targets
+    const targets = [];
+    function spawnTarget() {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 6 + Math.random() * 7;
+      const height = 0.8 + Math.random() * 4.0;
+      targets.push({
+        x: Math.cos(angle) * dist,
+        y: height,
+        z: Math.sin(angle) * dist,
+        rot: Math.random() * 6.28,
+        bob: Math.random() * 6.28,
+        color: Math.random() > 0.5 ? [1.0, 0.16, 0.43] : [0.0, 0.94, 1.0]
+      });
+    }
+    for (let i = 0; i < 8; i++) spawnTarget();
+
+    // Head Orientation State
+    let gyroActive = false;
+    let alpha = 0, beta = 0, gamma = 0;
+    let screenOrient = 0;
+    let yaw = 0, pitch = 0;
+
+    function updateOrient() {
+      screenOrient = (window.screen && window.screen.orientation)
+        ? window.screen.orientation.angle
+        : (window.orientation || 0);
+    }
+    window.addEventListener('orientationchange', updateOrient);
+    updateOrient();
+
+    function onDeviceOrientation(e) {
+      if (e.alpha === null) return;
+      gyroActive = true;
+      const deg = Math.PI / 180;
+      alpha = e.alpha * deg;
+      beta = e.beta * deg;
+      gamma = e.gamma * deg;
+    }
+
+    function getHeadQuat() {
+      if (gyroActive) {
+        const deg = Math.PI / 180;
+        let q = quatFromEulerYXZ(beta, alpha, -gamma);
+        const q1 = [-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)];
+        const q0 = quatFromAxisAngle(0, 0, 1, -screenOrient * deg);
+        q = quatMultiply(q, q1);
+        q = quatMultiply(q, q0);
+        return q;
+      } else {
+        return quatFromEulerYXZ(pitch, yaw, 0);
+      }
+    }
+
+    // Touch-drag fallback
+    let dragging = false, px = 0, py = 0;
+    window.addEventListener('pointerdown', e => { dragging = true; px = e.clientX; py = e.clientY; });
+    window.addEventListener('pointerup', () => { dragging = false; });
+    window.addEventListener('pointermove', e => {
+      if (!dragging || gyroActive) return;
+      yaw -= (e.clientX - px) * 0.005;
+      pitch = Math.max(-1.4, Math.min(1.4, pitch - (e.clientY - py) * 0.005));
+      px = e.clientX; py = e.clientY;
+    });
+
+    startBtn.addEventListener('click', async () => {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const res = await DeviceOrientationEvent.requestPermission();
+          if (res === 'granted') {
+            window.addEventListener('deviceorientation', onDeviceOrientation);
+            overlay.style.display = 'none';
+          } else {
+            statusEl.textContent = 'Permission denied. Ensure HTTPS and Safari Motion & Orientation Access is ON.';
+          }
+        } catch (err) {
+          statusEl.textContent = 'Blocked by browser security (requires HTTPS outside an iframe).';
+        }
+      } else {
+        window.addEventListener('deviceorientation', onDeviceOrientation);
+        overlay.style.display = 'none';
+      }
+    });
+
+    // Gaze Shooting
+    let gazeTimer = 0;
+    let lockedIdx = -1;
+    let score = 0;
+    const LOCK_TIME = 0.75;
+    const EYE_Y = 1.6;
+
+    function getForwardVec(q) {
+      const [x, y, z, w] = q;
+      // Rotate (0, 0, -1) by quaternion q
+      const fx = -2 * (x * z + w * y);
+      const fy = -2 * (y * z - w * x);
+      const fz = -(1 - 2 * (x * x + y * y));
+      return [fx, fy, fz];
+    }
+
+    function updateGaze(dt, headQuat) {
+      const [fx, fy, fz] = getForwardVec(headQuat);
+      let bestIdx = -1;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        const dx = t.x;
+        const dy = t.y - EYE_Y;
+        const dz = t.z;
+        const proj = dx * fx + dy * fy + dz * fz;
+        if (proj <= 0) continue;
+        const perpSq = (dx*dx + dy*dy + dz*dz) - proj * proj;
+        if (perpSq < 0.75 * 0.75 && proj < bestDist) {
+          bestDist = proj;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx !== -1) {
+        if (lockedIdx === bestIdx) {
+          gazeTimer += dt;
+        } else {
+          lockedIdx = bestIdx;
+          gazeTimer = 0;
+        }
+        const pct = Math.min(1, gazeTimer / LOCK_TIME);
+        retL.classList.add('locking');
+        retR.classList.add('locking');
+        fillL.style.transform = `scale(${pct})`;
+        fillR.style.transform = `scale(${pct})`;
+
+        if (gazeTimer >= LOCK_TIME) {
+          targets.splice(lockedIdx, 1);
+          spawnTarget();
+          score += 100;
+          hudL.textContent = `SCORE: ${score}`;
+          hudR.textContent = `SCORE: ${score}`;
+          lockedIdx = -1;
+          gazeTimer = 0;
+        }
+      } else {
+        lockedIdx = -1;
+        gazeTimer = 0;
+        retL.classList.remove('locking');
+        retR.classList.remove('locking');
+        fillL.style.transform = 'scale(0)';
+        fillR.style.transform = 'scale(0)';
+      }
+    }
+
+    function renderEye(eyeOffsetX, headQuat, aspect) {
+      const proj = mat4Perspective(75 * Math.PI / 180, aspect, 0.1, 100);
+      gl.uniformMatrix4fv(uProj, false, proj);
+
+      const invRot = mat4FromQuat(quatConjugate(headQuat));
+      const transEye = mat4Identity();
+      transEye[12] = -eyeOffsetX;
+      transEye[13] = -EYE_Y;
+      const view = mat4Multiply(transEye, invRot);
+      gl.uniformMatrix4fv(uView, false, view);
+
+      // Draw Floor Grid
+      gl.bindBuffer(gl.ARRAY_BUFFER, floorBuf);
+      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 24, 12);
+      gl.enableVertexAttribArray(aNormal);
+      gl.uniform1f(uIsGrid, 1.0);
+      gl.uniformMatrix4fv(uModel, false, mat4Identity());
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Draw Targets
+      gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuf);
+      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
+      gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 24, 12);
+      gl.uniform1f(uIsGrid, 0.0);
+
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        const c = Math.cos(t.rot), s = Math.sin(t.rot);
+        const model = new Float32Array([
+          c, 0, s, 0,
+          0, 1, 0, 0,
+         -s, 0, c, 0,
+          t.x, t.y, t.z, 1
+        ]);
+        gl.uniformMatrix4fv(uModel, false, model);
+        gl.uniform3fv(uColor, t.color);
+        gl.drawArrays(gl.TRIANGLES, 0, 36);
+      }
+    }
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.SCISSOR_TEST);
+
+    let lastTime = performance.now();
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const w = canvas.width = window.innerWidth * Math.min(window.devicePixelRatio || 1, 2);
+      const h = canvas.height = window.innerHeight * Math.min(window.devicePixelRatio || 1, 2);
+      const halfW = Math.floor(w / 2);
+
+      const headQuat = getHeadQuat();
+      updateGaze(dt, headQuat);
+
+      for (const t of targets) {
+        t.rot += 0.02;
+        t.y += Math.sin(now * 0.002 + t.bob) * 0.003;
+      }
+
+      gl.clearColor(0.02, 0.03, 0.07, 1.0);
+
+      // Left Eye
+      gl.viewport(0, 0, halfW, h);
+      gl.scissor(0, 0, halfW, h);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      renderEye(-0.032, headQuat, halfW / h);
+
+      // Right Eye
+      gl.viewport(halfW, 0, w - halfW, h);
+      gl.scissor(halfW, 0, w - halfW, h);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      renderEye(0.032, headQuat, (w - halfW) / h);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
