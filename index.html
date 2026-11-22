@@ -3,64 +3,83 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Cardboard VR Target Shooter</title>
+  <title>VR Home Theater - Cardboard Cinema</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
-      background: #050811; color: #fff;
+      background: #04050a; color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     #render-canvas { display: block; width: 100vw; height: 100vh; }
 
+    /* Stereoscopic Divider */
     #divider {
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
-      background: rgba(255, 255, 255, 0.25); transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.22); transform: translateX(-50%);
       pointer-events: none; z-index: 5;
     }
 
+    /* Gaze Reticles (Left & Right Eye) */
     .reticle {
-      position: fixed; top: 50%; width: 26px; height: 26px;
-      margin-top: -13px; margin-left: -13px;
-      border: 2px solid rgba(0, 240, 255, 0.85);
+      position: fixed; top: 50%; width: 28px; height: 28px;
+      margin-top: -14px; margin-left: -14px;
+      border: 2px solid rgba(56, 189, 248, 0.85);
       border-radius: 50%; pointer-events: none; z-index: 6;
-      transition: transform 0.1s ease, border-color 0.1s ease;
+      transition: transform 0.12s ease, border-color 0.12s ease;
     }
     .reticle.left { left: 25%; }
     .reticle.right { left: 75%; }
     .reticle.locking {
-      border-color: #ff2a6d;
+      border-color: #f59e0b;
       transform: scale(1.35);
     }
     .reticle-fill {
       width: 100%; height: 100%; border-radius: 50%;
-      background: rgba(255, 42, 109, 0.45);
+      background: rgba(245, 158, 11, 0.55);
       transform: scale(0);
     }
 
+    /* Subtle Eye Status HUD */
     .hud {
-      position: fixed; top: 14px; font-size: 14px; font-weight: 700;
-      letter-spacing: 0.5px; pointer-events: none; z-index: 6;
-      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+      position: fixed; bottom: 12px; font-size: 12px; font-weight: 600;
+      letter-spacing: 0.4px; color: rgba(255,255,255,0.65);
+      pointer-events: none; z-index: 6;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     }
     .hud.left { left: 25%; transform: translateX(-50%); }
     .hud.right { left: 75%; transform: translateX(-50%); }
 
+    /* Start & Video Picker Overlay */
     #overlay {
-      position: fixed; inset: 0; background: rgba(5, 8, 17, 0.92);
+      position: fixed; inset: 0; background: rgba(4, 5, 10, 0.94);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 24px; z-index: 20;
+      text-align: center; padding: 20px; z-index: 20;
     }
-    #overlay h1 { font-size: 26px; margin-bottom: 10px; color: #00f0ff; }
-    #overlay p { max-width: 440px; font-size: 14px; line-height: 1.5; color: #cbd5e1; margin-bottom: 22px; }
+    #overlay h1 { font-size: 26px; margin-bottom: 8px; color: #38bdf8; }
+    #overlay p { max-width: 480px; font-size: 14px; line-height: 1.5; color: #cbd5e1; margin-bottom: 18px; }
+
+    .setup-box {
+      background: #0f172a; border: 1px solid #1e293b; border-radius: 14px;
+      padding: 16px 20px; width: 100%; max-width: 460px; margin-bottom: 18px;
+    }
+    .file-label {
+      display: inline-block; background: #1e293b; color: #38bdf8;
+      border: 1px dashed #38bdf8; border-radius: 10px;
+      padding: 12px 18px; font-size: 14px; font-weight: 700;
+      cursor: pointer; width: 100%; margin-bottom: 10px;
+    }
+    #video-file { display: none; }
+    #file-name { font-size: 12px; color: #94a3b8; }
+
     #start-btn {
-      background: linear-gradient(135deg, #00f0ff, #0077ff);
-      color: #050811; border: none; border-radius: 12px;
-      padding: 16px 28px; font-size: 17px; font-weight: 800;
-      cursor: pointer; box-shadow: 0 8px 25px rgba(0, 240, 255, 0.35);
+      background: linear-gradient(135deg, #38bdf8, #2563eb);
+      color: #ffffff; border: none; border-radius: 12px;
+      padding: 16px 30px; font-size: 17px; font-weight: 800;
+      cursor: pointer; box-shadow: 0 8px 25px rgba(56, 189, 248, 0.35);
     }
     #start-btn:active { transform: scale(0.97); }
-    #status { margin-top: 14px; font-size: 13px; color: #fbbf24; max-width: 440px; }
+    #status { margin-top: 12px; font-size: 13px; color: #fbbf24; max-width: 440px; }
   </style>
 </head>
 <body>
@@ -70,26 +89,38 @@
   <div class="reticle left" id="reticle-l"><div class="reticle-fill" id="fill-l"></div></div>
   <div class="reticle right" id="reticle-r"><div class="reticle-fill" id="fill-r"></div></div>
 
-  <div class="hud left" id="hud-l">SCORE: 0</div>
-  <div class="hud right" id="hud-r">SCORE: 0</div>
+  <div class="hud left" id="hud-l">IMAX CINEMA • GAZE 1.5s TO CLICK</div>
+  <div class="hud right" id="hud-r">IMAX CINEMA • GAZE 1.5s TO CLICK</div>
 
   <div id="overlay">
-    <h1>Cardboard VR Shooter</h1>
+    <h1>VR Home Theater</h1>
     <p>
-      Rotate your iPad to <strong>Landscape</strong>, tap below to unlock head tracking, and place it into your headset.<br><br>
-      <strong>How to play:</strong> Look directly at glowing targets to lock on and fire automatically!
+      Choose a local video file from your iPad (or use the built-in cinema demo), rotate to <strong>Landscape</strong>, and enter VR.<br>
+      <strong>Hands-free controls:</strong> Look at any button below the screen for <strong>1.5 seconds</strong> to select it or re-center your view.
     </p>
-    <button id="start-btn">Enter VR &amp; Enable Gyroscope</button>
+
+    <div class="setup-box">
+      <label class="file-label" for="video-file">Select Video File (MP4, MOV, WebM)</label>
+      <input type="file" id="video-file" accept="video/*" />
+      <div id="file-name">Using built-in animated demo cinema reel</div>
+    </div>
+
+    <button id="start-btn">Enter VR Theater &amp; Unlock Head Tracking</button>
     <div id="status"></div>
   </div>
 
+  <!-- Hidden HTML5 Video Element -->
+  <video id="vr-video" playsinline webkit-playsinline loop crossorigin="anonymous" style="display:none;"></video>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-    // Minimal standalone WebGL 3D Engine (zero external dependencies)
     const canvas = document.getElementById('render-canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     const overlay = document.getElementById('overlay');
     const startBtn = document.getElementById('start-btn');
     const statusEl = document.getElementById('status');
+    const fileInput = document.getElementById('video-file');
+    const fileNameEl = document.getElementById('file-name');
+    const videoEl = document.getElementById('vr-video');
     const hudL = document.getElementById('hud-l');
     const hudR = document.getElementById('hud-r');
     const retL = document.getElementById('reticle-l');
@@ -97,238 +128,447 @@
     const fillL = document.getElementById('fill-l');
     const fillR = document.getElementById('fill-r');
 
-    const vsSource = `
-      attribute vec3 aPos;
-      attribute vec3 aNormal;
-      uniform mat4 uProj;
-      uniform mat4 uView;
-      uniform mat4 uModel;
-      varying vec3 vNormal;
-      varying vec3 vWorldPos;
-      void main() {
-        vec4 worldPos = uModel * vec4(aPos, 1.0);
-        vWorldPos = worldPos.xyz;
-        vNormal = mat3(uModel) * aNormal;
-        gl_Position = uProj * uView * worldPos;
-      }
-    `;
+    let usingCustomVideo = false;
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      videoEl.src = url;
+      usingCustomVideo = true;
+      fileNameEl.textContent = `Loaded: ${file.name}`;
+    });
 
-    const fsSource = `
-      precision mediump float;
-      varying vec3 vNormal;
-      varying vec3 vWorldPos;
-      uniform vec3 uColor;
-      uniform float uIsGrid;
-      void main() {
-        if (uIsGrid > 0.5) {
-          vec2 coord = vWorldPos.xz;
-          vec2 grid = abs(fract(coord - 0.5) - 0.5) / 0.04;
-          float line = min(grid.x, grid.y);
-          float alpha = 1.0 - min(line, 1.0);
-          float dist = length(vWorldPos.xz);
-          float fade = max(0.0, 1.0 - dist / 28.0);
-          gl_FragColor = vec4(0.0, 0.85, 1.0, alpha * fade * 0.45);
+    // Built-in Demo Cinema Canvas (used if user doesn't pick a local video)
+    const demoCanvas = document.createElement('canvas');
+    demoCanvas.width = 1280;
+    demoCanvas.height = 720;
+    const demoCtx = demoCanvas.getContext('2d');
+    const demoTexture = new THREE.CanvasTexture(demoCanvas);
+    demoTexture.minFilter = THREE.LinearFilter;
+    demoTexture.magFilter = THREE.LinearFilter;
+
+    let videoTexture = null;
+    let isPlaying = true;
+    let demoTime = 0;
+
+    function updateDemoReel(dt) {
+      if (isPlaying) demoTime += dt;
+      const w = demoCanvas.width, h = demoCanvas.height;
+      const grad = demoCtx.createLinearGradient(0, 0, w, h);
+      const hue1 = (demoTime * 18) % 360;
+      const hue2 = (hue1 + 70) % 360;
+      grad.addColorStop(0, `hsl(${hue1}, 75%, 18%)`);
+      grad.addColorStop(1, `hsl(${hue2}, 80%, 10%)`);
+      demoCtx.fillStyle = grad;
+      demoCtx.fillRect(0, 0, w, h);
+
+      // Animated horizon & stars
+      demoCtx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+      demoCtx.lineWidth = 2;
+      for (let i = 0; i < 12; i++) {
+        const y = h * 0.55 + Math.pow(i / 12, 1.8) * (h * 0.45);
+        demoCtx.beginPath();
+        demoCtx.moveTo(0, y);
+        demoCtx.lineTo(w, y);
+        demoCtx.stroke();
+      }
+
+      // Glowing sun
+      const sunY = h * 0.48 + Math.sin(demoTime * 0.8) * 20;
+      const sunGrad = demoCtx.createRadialGradient(w / 2, sunY, 10, w / 2, sunY, 140);
+      sunGrad.addColorStop(0, '#fde047');
+      sunGrad.addColorStop(0.5, '#f97316');
+      sunGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      demoCtx.fillStyle = sunGrad;
+      demoCtx.beginPath();
+      demoCtx.arc(w / 2, sunY, 140, 0, Math.PI * 2);
+      demoCtx.fill();
+
+      // Title overlay
+      demoCtx.fillStyle = '#ffffff';
+      demoCtx.font = 'bold 44px -apple-system, sans-serif';
+      demoCtx.textAlign = 'center';
+      demoCtx.fillText('VR HOME THEATER DEMO REEL', w / 2, 130);
+      demoCtx.font = '24px -apple-system, sans-serif';
+      demoCtx.fillStyle = '#cbd5e1';
+      demoCtx.fillText(isPlaying ? 'NOW PLAYING • LOOK DOWN AT CONTROLS FOR 1.5s' : 'PAUSED', w / 2, 175);
+
+      demoTexture.needsUpdate = true;
+    }
+
+    // Three.js Renderer & Scene
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setScissorTest(true);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x04050a);
+
+    // Stereo Head Rig + Yaw Centering Offset Group
+    const IPD = 0.064;
+    const centerOffsetGroup = new THREE.Group(); // Used for "Re-Center View"
+    scene.add(centerOffsetGroup);
+
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.6, 0);
+    centerOffsetGroup.add(headGroup);
+
+    const camLeft = new THREE.PerspectiveCamera(75, (window.innerWidth / 2) / window.innerHeight, 0.1, 100);
+    camLeft.position.x = -IPD / 2;
+    const camRight = new THREE.PerspectiveCamera(75, (window.innerWidth / 2) / window.innerHeight, 0.1, 100);
+    camRight.position.x = IPD / 2;
+    headGroup.add(camLeft, camRight);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x334155, 0.9);
+    const screenGlow = new THREE.PointLight(0x38bdf8, 1.4, 25);
+    screenGlow.position.set(0, 3.5, -7);
+    scene.add(ambientLight, screenGlow);
+
+    // Curved Cinema Screen (16:9)
+    function createCurvedScreenGeometry(radius, height, arcAngle, segW, segH) {
+      const geo = new THREE.PlaneGeometry(radius * arcAngle, height, segW, segH);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const theta = x / radius;
+        pos.setX(i, Math.sin(theta) * radius);
+        pos.setZ(i, -Math.cos(theta) * radius);
+      }
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    const screenGeo = createCurvedScreenGeometry(10.5, 5.8, 0.98, 40, 1);
+    const screenMat = new THREE.MeshBasicMaterial({ map: demoTexture });
+    const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+    screenMesh.position.set(0, 3.3, 0);
+    scene.add(screenMesh);
+
+    // Screen Frame
+    const frameGeo = createCurvedScreenGeometry(10.55, 6.15, 1.01, 40, 1);
+    const frameMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+    frameMesh.position.set(0, 3.3, 0);
+    scene.add(frameMesh);
+
+    // Theater Environments (3 Themes)
+    const theaterGroup = new THREE.Group();
+    scene.add(theaterGroup);
+
+    let currentThemeIndex = 0;
+    const themes = ['IMAX CINEMA', 'VOID SPACE', 'COZY LOUNGE'];
+
+    function buildTheaterEnvironment(themeName) {
+      while (theaterGroup.children.length > 0) {
+        theaterGroup.remove(theaterGroup.children[0]);
+      }
+
+      if (themeName === 'IMAX CINEMA') {
+        scene.background = new THREE.Color(0x05060b);
+        scene.fog = new THREE.FogExp2(0x05060b, 0.03);
+        screenGlow.color.setHex(0x38bdf8);
+
+        // Tiered theater floor & red seats
+        const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(24, 26),
+          new THREE.MeshStandardMaterial({ color: 0x11131c, roughness: 0.9 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        theaterGroup.add(floor);
+
+        // Side acoustic walls with warm LED strips
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x0d101b, roughness: 0.8 });
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 26), wallMat);
+        leftWall.position.set(-11, 4.5, -2);
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 26), wallMat);
+        rightWall.position.set(11, 4.5, -2);
+        theaterGroup.add(leftWall, rightWall);
+
+        const stripMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+        [-8, -4, 0, 4].forEach(z => {
+          const sL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.5, 0.12), stripMat);
+          sL.position.set(-10.75, 3.5, z);
+          const sR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.5, 0.12), stripMat);
+          sR.position.set(10.75, 3.5, z);
+          theaterGroup.add(sL, sR);
+        });
+
+        // Rows of cinema seats in front
+        const seatMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.7 });
+        for (let row = 1; row <= 3; row++) {
+          const z = -row * 1.9;
+          const y = 0.45 - row * 0.12;
+          for (let col = -4; col <= 4; col++) {
+            const seat = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.8, 0.6), seatMat);
+            seat.position.set(col * 1.05, y, z);
+            theaterGroup.add(seat);
+          }
+        }
+      } else if (themeName === 'VOID SPACE') {
+        scene.background = new THREE.Color(0x010206);
+        scene.fog = null;
+        screenGlow.color.setHex(0x818cf8);
+
+        // Starfield dome
+        const starGeo = new THREE.BufferGeometry();
+        const starCount = 900;
+        const positions = new Float32Array(starCount * 3);
+        for (let i = 0; i < starCount * 3; i += 3) {
+          const r = 28 + Math.random() * 25;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          positions[i] = r * Math.sin(phi) * Math.cos(theta);
+          positions[i + 1] = r * Math.cos(phi);
+          positions[i + 2] = r * Math.sin(phi) * Math.sin(theta);
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.22 }));
+        theaterGroup.add(stars);
+
+        // Subtle floating platform beneath viewer
+        const deck = new THREE.Mesh(
+          new THREE.RingGeometry(1.2, 2.6, 36),
+          new THREE.MeshBasicMaterial({ color: 0x1e293b, side: THREE.DoubleSide })
+        );
+        deck.rotation.x = -Math.PI / 2;
+        deck.position.y = 0.01;
+        theaterGroup.add(deck);
+      } else if (themeName === 'COZY LOUNGE') {
+        scene.background = new THREE.Color(0x140e0a);
+        scene.fog = new THREE.FogExp2(0x140e0a, 0.025);
+        screenGlow.color.setHex(0xfbbf24);
+
+        // Warm wood floor & rug
+        const floor = new THREE.Mesh(
+          new THREE.PlaneGeometry(18, 20),
+          new THREE.MeshStandardMaterial({ color: 0x3f2312, roughness: 0.65 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        theaterGroup.add(floor);
+
+        const rug = new THREE.Mesh(
+          new THREE.PlaneGeometry(7, 8),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.95 })
+        );
+        rug.rotation.x = -Math.PI / 2;
+        rug.position.set(0, 0.02, -3);
+        theaterGroup.add(rug);
+
+        // Warm walls & ceiling
+        const roomMat = new THREE.MeshStandardMaterial({ color: 0x291a12, side: THREE.BackSide });
+        const room = new THREE.Mesh(new THREE.BoxGeometry(18, 8, 22), roomMat);
+        room.position.set(0, 4, -2);
+        theaterGroup.add(room);
+
+        // Side table & glowing lamp
+        const table = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.55, 0.7, 20),
+          new THREE.MeshStandardMaterial({ color: 0x451a03 })
+        );
+        table.position.set(-2.2, 0.35, -1.5);
+        const lampShade = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.22, 0.35, 0.4, 16),
+          new THREE.MeshBasicMaterial({ color: 0xfde68a })
+        );
+        lampShade.position.set(-2.2, 0.95, -1.5);
+        theaterGroup.add(table, lampShade);
+      }
+    }
+
+    buildTheaterEnvironment(themes[currentThemeIndex]);
+
+    // 3D Floating Control Bar Below Screen (1.5s Gaze Activated)
+    const controlButtons = [];
+    const controlGroup = new THREE.Group();
+    controlGroup.position.set(0, 0.45, -6.5);
+    controlGroup.rotation.x = -0.22;
+    scene.add(controlGroup);
+
+    function makeButtonTexture(label, sublabel, bg = '#0f172a', accent = '#38bdf8') {
+      const c = document.createElement('canvas');
+      c.width = 360;
+      c.height = 140;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, c.width - 8, c.height - 8);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 34px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, c.width / 2, 64);
+
+      if (sublabel) {
+        ctx.fillStyle = accent;
+        ctx.font = 'bold 20px -apple-system, sans-serif';
+        ctx.fillText(sublabel, c.width / 2, 106);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.minFilter = THREE.LinearFilter;
+      return tex;
+    }
+
+    const buttonSpecs = [
+      { id: 'rewind',   x: -3.3, label: '<< -15s',     sub: 'REWIND' },
+      { id: 'play',     x: -1.65, label: 'PLAY / PAUSE', sub: 'TOGGLE' },
+      { id: 'recenter', x: 0,    label: 'RE-CENTER',   sub: 'ALIGN VIEW' },
+      { id: 'theater',  x: 1.65, label: 'THEATER',     sub: themes[0] },
+      { id: 'screen',   x: 3.3,  label: 'SCREEN SIZE', sub: 'NORMAL / IMAX' }
+    ];
+
+    buttonSpecs.forEach(spec => {
+      const geo = new THREE.PlaneGeometry(1.48, 0.58);
+      const tex = makeButtonTexture(spec.label, spec.sub);
+      const mat = new THREE.MeshBasicMaterial({ map: tex });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(spec.x, 0, 0);
+      mesh.userData = { id: spec.id, spec };
+      controlGroup.add(mesh);
+      controlButtons.push(mesh);
+    });
+
+    function refreshButtonLabel(id, label, sub, accent = '#38bdf8') {
+      const btn = controlButtons.find(b => b.userData.id === id);
+      if (!btn) return;
+      btn.material.map.dispose();
+      btn.material.map = makeButtonTexture(label, sub, '#0f172a', accent);
+      btn.material.needsUpdate = true;
+    }
+
+    // Centering Function (Aligns screen & controls directly in front of current head gaze)
+    function recenterView() {
+      const worldDir = new THREE.Vector3();
+      headGroup.getWorldDirection(worldDir);
+      worldDir.negate(); // Forward direction of camera
+      const currentYaw = Math.atan2(-worldDir.x, -worldDir.z);
+      centerOffsetGroup.rotation.y -= currentYaw;
+
+      hudL.textContent = `${themes[currentThemeIndex]} • VIEW RE-CENTERED`;
+      hudR.textContent = `${themes[currentThemeIndex]} • VIEW RE-CENTERED`;
+    }
+
+    let isBigScreen = false;
+    function triggerButtonAction(id) {
+      if (id === 'play') {
+        if (usingCustomVideo) {
+          if (videoEl.paused) { videoEl.play(); isPlaying = true; }
+          else { videoEl.pause(); isPlaying = false; }
         } else {
-          vec3 n = normalize(vNormal);
-          vec3 lightDir = normalize(vec3(0.4, 1.0, 0.6));
-          float diff = max(dot(n, lightDir), 0.25);
-          gl_FragColor = vec4(uColor * diff + uColor * 0.25, 1.0);
+          isPlaying = !isPlaying;
         }
-      }
-    `;
-
-    function compileShader(type, src) {
-      const s = gl.createShader(type);
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      return s;
-    }
-    const prog = gl.createProgram();
-    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSource));
-    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSource));
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
-
-    const aPos = gl.getAttribLocation(prog, 'aPos');
-    const aNormal = gl.getAttribLocation(prog, 'aNormal');
-    const uProj = gl.getUniformLocation(prog, 'uProj');
-    const uView = gl.getUniformLocation(prog, 'uView');
-    const uModel = gl.getUniformLocation(prog, 'uModel');
-    const uColor = gl.getUniformLocation(prog, 'uColor');
-    const uIsGrid = gl.getUniformLocation(prog, 'uIsGrid');
-
-    // Cube geometry for targets
-    const cubeVerts = new Float32Array([
-      -0.5,-0.5, 0.5,  0, 0, 1,   0.5,-0.5, 0.5,  0, 0, 1,   0.5, 0.5, 0.5,  0, 0, 1,
-      -0.5,-0.5, 0.5,  0, 0, 1,   0.5, 0.5, 0.5,  0, 0, 1,  -0.5, 0.5, 0.5,  0, 0, 1,
-      -0.5,-0.5,-0.5,  0, 0,-1,  -0.5, 0.5,-0.5,  0, 0,-1,   0.5, 0.5,-0.5,  0, 0,-1,
-      -0.5,-0.5,-0.5,  0, 0,-1,   0.5, 0.5,-0.5,  0, 0,-1,   0.5,-0.5,-0.5,  0, 0,-1,
-      -0.5, 0.5,-0.5,  0, 1, 0,  -0.5, 0.5, 0.5,  0, 1, 0,   0.5, 0.5, 0.5,  0, 1, 0,
-      -0.5, 0.5,-0.5,  0, 1, 0,   0.5, 0.5, 0.5,  0, 1, 0,   0.5, 0.5,-0.5,  0, 1, 0,
-      -0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5, 0.5,  0,-1, 0,
-      -0.5,-0.5,-0.5,  0,-1, 0,   0.5,-0.5, 0.5,  0,-1, 0,  -0.5,-0.5, 0.5,  0,-1, 0,
-       0.5,-0.5,-0.5,  1, 0, 0,   0.5, 0.5,-0.5,  1, 0, 0,   0.5, 0.5, 0.5,  1, 0, 0,
-       0.5,-0.5,-0.5,  1, 0, 0,   0.5, 0.5, 0.5,  1, 0, 0,   0.5,-0.5, 0.5,  1, 0, 0,
-      -0.5,-0.5,-0.5, -1, 0, 0,  -0.5,-0.5, 0.5, -1, 0, 0,  -0.5, 0.5, 0.5, -1, 0, 0,
-      -0.5,-0.5,-0.5, -1, 0, 0,  -0.5, 0.5, 0.5, -1, 0, 0,  -0.5, 0.5,-0.5, -1, 0, 0
-    ]);
-    const cubeBuf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, cubeVerts, gl.STATIC_DRAW);
-
-    // Floor plane geometry
-    const floorVerts = new Float32Array([
-      -30, 0, -30,  0,1,0,   30, 0, -30,  0,1,0,   30, 0,  30,  0,1,0,
-      -30, 0, -30,  0,1,0,   30, 0,  30,  0,1,0,  -30, 0,  30,  0,1,0
-    ]);
-    const floorBuf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, floorBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, floorVerts, gl.STATIC_DRAW);
-
-    // Matrix helpers
-    function mat4Identity() {
-      return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-    }
-    function mat4Perspective(fov, aspect, near, far) {
-      const f = 1.0 / Math.tan(fov / 2);
-      const nf = 1 / (near - far);
-      return new Float32Array([
-        f / aspect, 0, 0, 0,
-        0, f, 0, 0,
-        0, 0, (far + near) * nf, -1,
-        0, 0, (2 * far * near) * nf, 0
-      ]);
-    }
-    function mat4Multiply(a, b) {
-      const out = new Float32Array(16);
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          out[j * 4 + i] =
-            a[0 * 4 + i] * b[j * 4 + 0] +
-            a[1 * 4 + i] * b[j * 4 + 1] +
-            a[2 * 4 + i] * b[j * 4 + 2] +
-            a[3 * 4 + i] * b[j * 4 + 3];
+        refreshButtonLabel('play', isPlaying ? 'PAUSE' : 'PLAY', isPlaying ? 'PLAYING' : 'PAUSED', '#22c55e');
+      } else if (id === 'rewind') {
+        if (usingCustomVideo) {
+          videoEl.currentTime = Math.max(0, videoEl.currentTime - 15);
+        } else {
+          demoTime = Math.max(0, demoTime - 15);
         }
+        refreshButtonLabel('rewind', '<< -15s', 'REWINDED!', '#f59e0b');
+        setTimeout(() => refreshButtonLabel('rewind', '<< -15s', 'REWIND'), 900);
+      } else if (id === 'recenter') {
+        recenterView();
+        refreshButtonLabel('recenter', 'RE-CENTER', 'CENTERED!', '#22c55e');
+        setTimeout(() => refreshButtonLabel('recenter', 'RE-CENTER', 'ALIGN VIEW'), 1000);
+      } else if (id === 'theater') {
+        currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+        const nextTheme = themes[currentThemeIndex];
+        buildTheaterEnvironment(nextTheme);
+        refreshButtonLabel('theater', 'THEATER', nextTheme, '#a855f7');
+        hudL.textContent = `${nextTheme} • GAZE 1.5s TO CLICK`;
+        hudR.textContent = `${nextTheme} • GAZE 1.5s TO CLICK`;
+      } else if (id === 'screen') {
+        isBigScreen = !isBigScreen;
+        const scale = isBigScreen ? 1.32 : 1.0;
+        screenMesh.scale.set(scale, scale, 1);
+        frameMesh.scale.set(scale, scale, 1);
+        screenMesh.position.y = isBigScreen ? 3.8 : 3.3;
+        frameMesh.position.y = isBigScreen ? 3.8 : 3.3;
+        refreshButtonLabel('screen', 'SCREEN SIZE', isBigScreen ? 'GIANT IMAX' : 'STANDARD', '#38bdf8');
       }
-      return out;
-    }
-    function mat4FromQuat(q) {
-      const [x, y, z, w] = q;
-      const x2 = x + x, y2 = y + y, z2 = z + z;
-      const xx = x * x2, xy = x * y2, xz = x * z2;
-      const yy = y * y2, yz = y * z2, zz = z * z2;
-      const wx = w * x2, wy = w * y2, wz = w * z2;
-      return new Float32Array([
-        1 - (yy + zz), xy + wz, xz - wy, 0,
-        xy - wz, 1 - (xx + zz), yz + wx, 0,
-        xz + wy, yz - wx, 1 - (xx + yy), 0,
-        0, 0, 0, 1
-      ]);
-    }
-    function quatMultiply(a, b) {
-      return [
-        a[0]*b[3] + a[3]*b[0] + a[1]*b[2] - a[2]*b[1],
-        a[1]*b[3] + a[3]*b[1] + a[2]*b[0] - a[0]*b[2],
-        a[2]*b[3] + a[3]*b[2] + a[0]*b[1] - a[1]*b[0],
-        a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2]
-      ];
-    }
-    function quatConjugate(q) { return [-q[0], -q[1], -q[2], q[3]]; }
-    function quatFromEulerYXZ(x, y, z) {
-      const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
-      const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
-      return [
-        s1 * c2 * c3 + c1 * s2 * s3,
-        c1 * s2 * c3 - s1 * c2 * s3,
-        c1 * c2 * s3 - s1 * s2 * c3,
-        c1 * c2 * c3 + s1 * s2 * s3
-      ];
-    }
-    function quatFromAxisAngle(ax, ay, az, angle) {
-      const half = angle / 2, s = Math.sin(half);
-      return [ax * s, ay * s, az * s, Math.cos(half)];
     }
 
-    // Targets
-    const targets = [];
-    function spawnTarget() {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 6 + Math.random() * 7;
-      const height = 0.8 + Math.random() * 4.0;
-      targets.push({
-        x: Math.cos(angle) * dist,
-        y: height,
-        z: Math.sin(angle) * dist,
-        rot: Math.random() * 6.28,
-        bob: Math.random() * 6.28,
-        color: Math.random() > 0.5 ? [1.0, 0.16, 0.43] : [0.0, 0.94, 1.0]
-      });
-    }
-    for (let i = 0; i < 8; i++) spawnTarget();
-
-    // Head Orientation State
+    // Device Orientation Head Tracking (iPadOS & Mobile)
+    let deviceAlpha = 0, deviceBeta = 0, deviceGamma = 0;
+    let screenOrientation = 0;
     let gyroActive = false;
-    let alpha = 0, beta = 0, gamma = 0;
-    let screenOrient = 0;
-    let yaw = 0, pitch = 0;
 
-    function updateOrient() {
-      screenOrient = (window.screen && window.screen.orientation)
+    const zee = new THREE.Vector3(0, 0, 1);
+    const euler = new THREE.Euler();
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+    function updateScreenOrientation() {
+      screenOrientation = (window.screen && window.screen.orientation)
         ? window.screen.orientation.angle
         : (window.orientation || 0);
     }
-    window.addEventListener('orientationchange', updateOrient);
-    updateOrient();
+    window.addEventListener('orientationchange', updateScreenOrientation);
+    updateScreenOrientation();
 
     function onDeviceOrientation(e) {
       if (e.alpha === null) return;
+      const firstReading = !gyroActive;
       gyroActive = true;
-      const deg = Math.PI / 180;
-      alpha = e.alpha * deg;
-      beta = e.beta * deg;
-      gamma = e.gamma * deg;
-    }
-
-    function getHeadQuat() {
-      if (gyroActive) {
-        const deg = Math.PI / 180;
-        let q = quatFromEulerYXZ(beta, alpha, -gamma);
-        const q1 = [-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)];
-        const q0 = quatFromAxisAngle(0, 0, 1, -screenOrient * deg);
-        q = quatMultiply(q, q1);
-        q = quatMultiply(q, q0);
-        return q;
-      } else {
-        return quatFromEulerYXZ(pitch, yaw, 0);
+      deviceAlpha = THREE.MathUtils.degToRad(e.alpha);
+      deviceBeta  = THREE.MathUtils.degToRad(e.beta);
+      deviceGamma = THREE.MathUtils.degToRad(e.gamma);
+      if (firstReading) {
+        applyHeadRotation();
+        recenterView(); // Auto-center screen right in front of user on start
       }
     }
 
-    // Touch-drag fallback
-    let dragging = false, px = 0, py = 0;
-    window.addEventListener('pointerdown', e => { dragging = true; px = e.clientX; py = e.clientY; });
-    window.addEventListener('pointerup', () => { dragging = false; });
+    function applyHeadRotation() {
+      if (!gyroActive) return;
+      const orient = THREE.MathUtils.degToRad(screenOrientation);
+      euler.set(deviceBeta, deviceAlpha, -deviceGamma, 'YXZ');
+      headGroup.quaternion.setFromEuler(euler);
+      headGroup.quaternion.multiply(q1);
+      headGroup.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
+    }
+
+    // Touch-drag fallback when testing without sensors
+    let isDragging = false, prevX = 0, prevY = 0, yaw = 0, pitch = 0;
+    window.addEventListener('pointerdown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+    window.addEventListener('pointerup', () => { isDragging = false; });
     window.addEventListener('pointermove', e => {
-      if (!dragging || gyroActive) return;
-      yaw -= (e.clientX - px) * 0.005;
-      pitch = Math.max(-1.4, Math.min(1.4, pitch - (e.clientY - py) * 0.005));
-      px = e.clientX; py = e.clientY;
+      if (!isDragging || gyroActive) return;
+      yaw -= (e.clientX - prevX) * 0.005;
+      pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - prevY) * 0.005));
+      prevX = e.clientX; prevY = e.clientY;
+      headGroup.rotation.set(pitch, yaw, 0, 'YXZ');
     });
 
+    // Enter VR & Request iPadOS Sensor Permission
     startBtn.addEventListener('click', async () => {
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
       }
+
+      if (usingCustomVideo) {
+        videoTexture = new THREE.VideoTexture(videoEl);
+        videoTexture.minFilter = THREE.LinearFilter;
+        videoTexture.magFilter = THREE.LinearFilter;
+        screenMat.map = videoTexture;
+        screenMat.needsUpdate = true;
+        videoEl.play().catch(() => {});
+      }
+
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
-          const res = await DeviceOrientationEvent.requestPermission();
-          if (res === 'granted') {
+          const response = await DeviceOrientationEvent.requestPermission();
+          if (response === 'granted') {
             window.addEventListener('deviceorientation', onDeviceOrientation);
             overlay.style.display = 'none';
           } else {
-            statusEl.textContent = 'Permission denied. Ensure HTTPS and Safari Motion & Orientation Access is ON.';
+            statusEl.textContent = 'Permission denied. Ensure this page is opened over HTTPS and Safari Motion & Orientation Access is ON.';
           }
         } catch (err) {
-          statusEl.textContent = 'Blocked by browser security (requires HTTPS outside an iframe).';
+          statusEl.textContent = 'Sensors blocked by browser frame. Open this standalone HTML over HTTPS to unlock head tracking.';
         }
       } else {
         window.addEventListener('deviceorientation', onDeviceOrientation);
@@ -336,65 +576,54 @@
       }
     });
 
-    // Gaze Shooting
+    // 1.5 Second Gaze Raycaster for Theater Controls
+    const raycaster = new THREE.Raycaster();
+    const camWorldPos = new THREE.Vector3();
+    const camWorldDir = new THREE.Vector3();
     let gazeTimer = 0;
-    let lockedIdx = -1;
-    let score = 0;
-    const LOCK_TIME = 0.75;
-    const EYE_Y = 1.6;
+    let hoveredBtn = null;
+    let cooldown = 0;
+    const GAZE_DURATION = 1.5; // 1.5 seconds
 
-    function getForwardVec(q) {
-      const [x, y, z, w] = q;
-      // Rotate (0, 0, -1) by quaternion q
-      const fx = -2 * (x * z + w * y);
-      const fy = -2 * (y * z - w * x);
-      const fz = -(1 - 2 * (x * x + y * y));
-      return [fx, fy, fz];
-    }
-
-    function updateGaze(dt, headQuat) {
-      const [fx, fy, fz] = getForwardVec(headQuat);
-      let bestIdx = -1;
-      let bestDist = Infinity;
-
-      for (let i = 0; i < targets.length; i++) {
-        const t = targets[i];
-        const dx = t.x;
-        const dy = t.y - EYE_Y;
-        const dz = t.z;
-        const proj = dx * fx + dy * fy + dz * fz;
-        if (proj <= 0) continue;
-        const perpSq = (dx*dx + dy*dy + dz*dz) - proj * proj;
-        if (perpSq < 0.75 * 0.75 && proj < bestDist) {
-          bestDist = proj;
-          bestIdx = i;
-        }
+    function updateGazeControls(dt) {
+      if (cooldown > 0) {
+        cooldown -= dt;
+        return;
       }
 
-      if (bestIdx !== -1) {
-        if (lockedIdx === bestIdx) {
+      headGroup.getWorldPosition(camWorldPos);
+      headGroup.getWorldDirection(camWorldDir);
+      camWorldDir.negate(); // Camera looks down -Z
+      raycaster.set(camWorldPos, camWorldDir);
+
+      const hits = raycaster.intersectObjects(controlButtons);
+      if (hits.length > 0) {
+        const hitMesh = hits[0].object;
+        if (hoveredBtn === hitMesh) {
           gazeTimer += dt;
         } else {
-          lockedIdx = bestIdx;
+          hoveredBtn = hitMesh;
           gazeTimer = 0;
         }
-        const pct = Math.min(1, gazeTimer / LOCK_TIME);
+
+        const progress = Math.min(1, gazeTimer / GAZE_DURATION);
         retL.classList.add('locking');
         retR.classList.add('locking');
-        fillL.style.transform = `scale(${pct})`;
-        fillR.style.transform = `scale(${pct})`;
+        fillL.style.transform = `scale(${progress})`;
+        fillR.style.transform = `scale(${progress})`;
 
-        if (gazeTimer >= LOCK_TIME) {
-          targets.splice(lockedIdx, 1);
-          spawnTarget();
-          score += 100;
-          hudL.textContent = `SCORE: ${score}`;
-          hudR.textContent = `SCORE: ${score}`;
-          lockedIdx = -1;
+        if (gazeTimer >= GAZE_DURATION) {
+          triggerButtonAction(hoveredBtn.userData.id);
           gazeTimer = 0;
+          hoveredBtn = null;
+          cooldown = 0.6;
+          retL.classList.remove('locking');
+          retR.classList.remove('locking');
+          fillL.style.transform = 'scale(0)';
+          fillR.style.transform = 'scale(0)';
         }
       } else {
-        lockedIdx = -1;
+        hoveredBtn = null;
         gazeTimer = 0;
         retL.classList.remove('locking');
         retR.classList.remove('locking');
@@ -403,86 +632,45 @@
       }
     }
 
-    function renderEye(eyeOffsetX, headQuat, aspect) {
-      const proj = mat4Perspective(75 * Math.PI / 180, aspect, 0.1, 100);
-      gl.uniformMatrix4fv(uProj, false, proj);
+    // Handle Resize / Orientation Change
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h);
+      camLeft.aspect = (w / 2) / h;
+      camRight.aspect = (w / 2) / h;
+      camLeft.updateProjectionMatrix();
+      camRight.updateProjectionMatrix();
+    });
 
-      const invRot = mat4FromQuat(quatConjugate(headQuat));
-      const transEye = mat4Identity();
-      transEye[12] = -eyeOffsetX;
-      transEye[13] = -EYE_Y;
-      const view = mat4Multiply(transEye, invRot);
-      gl.uniformMatrix4fv(uView, false, view);
-
-      // Draw Floor Grid
-      gl.bindBuffer(gl.ARRAY_BUFFER, floorBuf);
-      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 24, 12);
-      gl.enableVertexAttribArray(aNormal);
-      gl.uniform1f(uIsGrid, 1.0);
-      gl.uniformMatrix4fv(uModel, false, mat4Identity());
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-      // Draw Targets
-      gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuf);
-      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
-      gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 24, 12);
-      gl.uniform1f(uIsGrid, 0.0);
-
-      for (let i = 0; i < targets.length; i++) {
-        const t = targets[i];
-        const c = Math.cos(t.rot), s = Math.sin(t.rot);
-        const model = new Float32Array([
-          c, 0, s, 0,
-          0, 1, 0, 0,
-         -s, 0, c, 0,
-          t.x, t.y, t.z, 1
-        ]);
-        gl.uniformMatrix4fv(uModel, false, model);
-        gl.uniform3fv(uColor, t.color);
-        gl.drawArrays(gl.TRIANGLES, 0, 36);
-      }
-    }
-
-    gl.enable(gl.DEPTH_TEST);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.enable(gl.SCISSOR_TEST);
-
+    // Main Stereo Render Loop
     let lastTime = performance.now();
-    function loop(now) {
-      requestAnimationFrame(loop);
-      const dt = (now - lastTime) / 1000;
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
       lastTime = now;
 
-      const w = canvas.width = window.innerWidth * Math.min(window.devicePixelRatio || 1, 2);
-      const h = canvas.height = window.innerHeight * Math.min(window.devicePixelRatio || 1, 2);
-      const halfW = Math.floor(w / 2);
-
-      const headQuat = getHeadQuat();
-      updateGaze(dt, headQuat);
-
-      for (const t of targets) {
-        t.rot += 0.02;
-        t.y += Math.sin(now * 0.002 + t.bob) * 0.003;
+      if (!usingCustomVideo) {
+        updateDemoReel(dt);
       }
 
-      gl.clearColor(0.02, 0.03, 0.07, 1.0);
+      applyHeadRotation();
+      updateGazeControls(dt);
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const halfW = Math.floor(w / 2);
 
       // Left Eye
-      gl.viewport(0, 0, halfW, h);
-      gl.scissor(0, 0, halfW, h);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      renderEye(-0.032, headQuat, halfW / h);
+      renderer.setViewport(0, 0, halfW, h);
+      renderer.setScissor(0, 0, halfW, h);
+      renderer.render(scene, camLeft);
 
       // Right Eye
-      gl.viewport(halfW, 0, w - halfW, h);
-      gl.scissor(halfW, 0, w - halfW, h);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      renderEye(0.032, headQuat, (w - halfW) / h);
+      renderer.setViewport(halfW, 0, w - halfW, h);
+      renderer.setScissor(halfW, 0, w - halfW, h);
+      renderer.render(scene, camRight);
     }
-    requestAnimationFrame(loop);
+    animate(performance.now());
   </script>
 </body>
 </html>
