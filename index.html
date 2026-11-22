@@ -3,628 +3,800 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>VR Home Theater - Cardboard Cinema</title>
+  <title>VR Home Theater - Shinecon iPad Edition</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     html, body {
       width: 100%; height: 100%; overflow: hidden;
-      background: #04050a; color: #f8fafc;
+      background: #000000; color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    #render-canvas { display: block; width: 100vw; height: 100vh; }
 
-    /* Stereoscopic Divider */
-    #divider {
-      position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
-      background: rgba(255, 255, 255, 0.22); transform: translateX(-50%);
-      pointer-events: none; z-index: 5;
+    /* Stereoscopic Viewport Container sized for VR Shinecon lenses on 11" iPad */
+    #vr-stage {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 680px;
+      height: 360px;
+      background: #02040a;
+      overflow: hidden;
+      border: 1px solid #1e293b;
+      border-radius: 16px;
     }
 
-    /* Gaze Reticles (Left & Right Eye) */
+    #render-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #divider {
+      position: absolute;
+      top: 0; left: 50%;
+      width: 2px; height: 100%;
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateX(-50%);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Stereoscopic Gaze Reticles (Left & Right Eye) */
     .reticle {
-      position: fixed; top: 50%; width: 28px; height: 28px;
-      margin-top: -14px; margin-left: -14px;
-      border: 2px solid rgba(56, 189, 248, 0.85);
-      border-radius: 50%; pointer-events: none; z-index: 6;
-      transition: transform 0.12s ease, border-color 0.12s ease;
+      position: absolute;
+      top: 50%;
+      width: 22px; height: 22px;
+      margin-top: -11px; margin-left: -11px;
+      border: 2px solid rgba(56, 189, 248, 0.9);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 6;
+      transition: transform 0.1s ease, border-color 0.1s ease;
     }
     .reticle.left { left: 25%; }
     .reticle.right { left: 75%; }
     .reticle.locking {
-      border-color: #f59e0b;
+      border-color: #f43f5e;
       transform: scale(1.35);
     }
     .reticle-fill {
-      width: 100%; height: 100%; border-radius: 50%;
-      background: rgba(245, 158, 11, 0.55);
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      background: rgba(244, 63, 94, 0.55);
       transform: scale(0);
     }
 
-    /* Subtle Eye Status HUD */
-    .hud {
-      position: fixed; bottom: 12px; font-size: 12px; font-weight: 600;
-      letter-spacing: 0.4px; color: rgba(255,255,255,0.65);
-      pointer-events: none; z-index: 6;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    /* Stereoscopic 3-Second Countdown Overlay */
+    .countdown-box {
+      position: absolute;
+      top: 36%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 8;
+      display: none;
+      background: rgba(2, 6, 23, 0.78);
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(56, 189, 248, 0.5);
     }
-    .hud.left { left: 25%; transform: translateX(-50%); }
-    .hud.right { left: 75%; transform: translateX(-50%); }
+    .countdown-box.left { left: 25%; }
+    .countdown-box.right { left: 75%; }
+    .countdown-num {
+      font-size: 32px;
+      font-weight: 900;
+      color: #38bdf8;
+      line-height: 1.1;
+    }
+    .countdown-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #e2e8f0;
+      letter-spacing: 0.4px;
+    }
 
-    /* Start & Video Picker Overlay */
+    /* Setup & Calibration Overlay */
     #overlay {
-      position: fixed; inset: 0; background: rgba(4, 5, 10, 0.94);
+      position: fixed; inset: 0;
+      background: radial-gradient(circle at top, #0f172a 0%, #020617 85%);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 20px; z-index: 20;
+      padding: 18px; z-index: 30; overflow-y: auto;
     }
-    #overlay h1 { font-size: 26px; margin-bottom: 8px; color: #38bdf8; }
-    #overlay p { max-width: 480px; font-size: 14px; line-height: 1.5; color: #cbd5e1; margin-bottom: 18px; }
+    .card {
+      width: 100%; max-width: 540px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 18px;
+      padding: 20px 22px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.75);
+    }
+    .card h1 {
+      font-size: 22px; font-weight: 800; color: #38bdf8;
+      margin-bottom: 6px; text-align: center;
+    }
+    .card p.sub {
+      font-size: 13px; color: #cbd5e1; text-align: center;
+      margin-bottom: 16px; line-height: 1.45;
+    }
 
-    .setup-box {
-      background: #0f172a; border: 1px solid #1e293b; border-radius: 14px;
-      padding: 16px 20px; width: 100%; max-width: 460px; margin-bottom: 18px;
+    .section-title {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.8px; color: #94a3b8; margin-bottom: 8px;
     }
-    .file-label {
-      display: inline-block; background: #1e293b; color: #38bdf8;
-      border: 1px dashed #38bdf8; border-radius: 10px;
-      padding: 12px 18px; font-size: 14px; font-weight: 700;
-      cursor: pointer; width: 100%; margin-bottom: 10px;
-    }
-    #video-file { display: none; }
-    #file-name { font-size: 12px; color: #94a3b8; }
 
-    #start-btn {
+    .file-row {
+      display: flex; gap: 10px; margin-bottom: 16px; align-items: center;
+    }
+    .file-btn {
+      flex: 1; background: #1e293b; border: 1px dashed #38bdf8;
+      color: #e0f2fe; padding: 10px 14px; border-radius: 10px;
+      font-size: 13px; font-weight: 700; text-align: center; cursor: pointer;
+    }
+    .file-name {
+      font-size: 12px; color: #94a3b8; max-width: 180px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .sliders {
+      background: rgba(2, 6, 23, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .slider-row {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .slider-header {
+      display: flex; justify-content: space-between;
+      font-size: 12px; font-weight: 600; color: #e2e8f0;
+    }
+    .slider-header span.val { color: #38bdf8; font-weight: 800; }
+    input[type="range"] {
+      width: 100%; accent-color: #38bdf8; cursor: pointer;
+    }
+
+    #enter-btn {
+      width: 100%;
       background: linear-gradient(135deg, #38bdf8, #2563eb);
-      color: #ffffff; border: none; border-radius: 12px;
-      padding: 16px 30px; font-size: 17px; font-weight: 800;
+      color: #020617; border: none; border-radius: 12px;
+      padding: 15px; font-size: 16px; font-weight: 900;
       cursor: pointer; box-shadow: 0 8px 25px rgba(56, 189, 248, 0.35);
     }
-    #start-btn:active { transform: scale(0.97); }
-    #status { margin-top: 12px; font-size: 13px; color: #fbbf24; max-width: 440px; }
+    #enter-btn:active { transform: scale(0.98); }
+
+    #status {
+      margin-top: 10px; font-size: 12px; color: #fbbf24;
+      text-align: center; min-height: 16px;
+    }
+
+    /* Quick Corner Setup Button when in VR */
+    #reopen-setup {
+      position: fixed; top: 10px; right: 10px;
+      background: rgba(15, 23, 42, 0.75); color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 8px; padding: 6px 10px;
+      font-size: 11px; font-weight: 700; z-index: 20; cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <canvas id="render-canvas"></canvas>
-  <div id="divider"></div>
 
-  <div class="reticle left" id="reticle-l"><div class="reticle-fill" id="fill-l"></div></div>
-  <div class="reticle right" id="reticle-r"><div class="reticle-fill" id="fill-r"></div></div>
+  <!-- Stereoscopic VR Viewport -->
+  <div id="vr-stage">
+    <canvas id="render-canvas"></canvas>
+    <div id="divider"></div>
 
-  <div class="hud left" id="hud-l">IMAX CINEMA • GAZE 1.5s TO CLICK</div>
-  <div class="hud right" id="hud-r">IMAX CINEMA • GAZE 1.5s TO CLICK</div>
+    <div class="reticle left" id="reticle-l"><div class="reticle-fill" id="fill-l"></div></div>
+    <div class="reticle right" id="reticle-r"><div class="reticle-fill" id="fill-r"></div></div>
 
-  <div id="overlay">
-    <h1>VR Home Theater</h1>
-    <p>
-      Choose a local video file from your iPad (or use the built-in cinema demo), rotate to <strong>Landscape</strong>, and enter VR.<br>
-      <strong>Hands-free controls:</strong> Look at any button below the screen for <strong>1.5 seconds</strong> to select it or re-center your view.
-    </p>
-
-    <div class="setup-box">
-      <label class="file-label" for="video-file">Select Video File (MP4, MOV, WebM)</label>
-      <input type="file" id="video-file" accept="video/*" />
-      <div id="file-name">Using built-in animated demo cinema reel</div>
+    <div class="countdown-box left" id="cd-l">
+      <div class="countdown-num" id="cd-num-l">3</div>
+      <div class="countdown-label">LOOK STRAIGHT AHEAD</div>
     </div>
-
-    <button id="start-btn">Enter VR Theater &amp; Unlock Head Tracking</button>
-    <div id="status"></div>
+    <div class="countdown-box right" id="cd-r">
+      <div class="countdown-num" id="cd-num-r">3</div>
+      <div class="countdown-label">LOOK STRAIGHT AHEAD</div>
+    </div>
   </div>
 
-  <!-- Hidden HTML5 Video Element -->
-  <video id="vr-video" playsinline webkit-playsinline loop crossorigin="anonymous" style="display:none;"></video>
+  <button id="reopen-setup">⚙ Setup</button>
+
+  <!-- Setup & Calibration Screen -->
+  <div id="overlay">
+    <div class="card">
+      <h1>VR Home Theater</h1>
+      <p class="sub">
+        Auto-fits <strong>9:16 TikTok / Vertical</strong> &amp; <strong>16:9 Widescreen</strong> videos without stretching, plus live <strong>In-Theater Gaze Settings</strong> for IPD &amp; lens spacing.
+      </p>
+
+      <div class="section-title">1. Choose Video (Or Use Built-in Demo)</div>
+      <div class="file-row">
+        <label class="file-btn" for="video-input">📂 Load Video (MP4 / MOV / WebM)</label>
+        <input type="file" id="video-input" accept="video/*" style="display:none" />
+        <div class="file-name" id="file-label">Demo Cinema Reel</div>
+      </div>
+
+      <div class="section-title">2. Quick Lens Fit (Also Adjustable Inside VR)</div>
+      <div class="sliders">
+        <div class="slider-row">
+          <div class="slider-header">
+            <span>Eye Window Width (Fixes Double Vision)</span>
+            <span class="val" id="val-w">680 px</span>
+          </div>
+          <input type="range" id="slider-w" min="460" max="1180" step="10" value="680" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <span>Eye Window Height</span>
+            <span class="val" id="val-h">360 px</span>
+          </div>
+          <input type="range" id="slider-h" min="260" max="820" step="10" value="360" />
+        </div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <span>Stereo IPD Depth (3D Separation)</span>
+            <span class="val" id="val-ipd">64 mm</span>
+          </div>
+          <input type="range" id="slider-ipd" min="50" max="76" step="1" value="64" />
+        </div>
+      </div>
+
+      <button id="enter-btn">Enter VR Theater (3s Re-Orient)</button>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <video id="video-el" playsinline webkit-playsinline loop crossorigin="anonymous" style="display:none"></video>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
+    const vrStage = document.getElementById('vr-stage');
     const canvas = document.getElementById('render-canvas');
     const overlay = document.getElementById('overlay');
-    const startBtn = document.getElementById('start-btn');
+    const enterBtn = document.getElementById('enter-btn');
+    const reopenSetupBtn = document.getElementById('reopen-setup');
     const statusEl = document.getElementById('status');
-    const fileInput = document.getElementById('video-file');
-    const fileNameEl = document.getElementById('file-name');
-    const videoEl = document.getElementById('vr-video');
-    const hudL = document.getElementById('hud-l');
-    const hudR = document.getElementById('hud-r');
+
+    const videoInput = document.getElementById('video-input');
+    const fileLabel = document.getElementById('file-label');
+    const videoEl = document.getElementById('video-el');
+
+    const sliderW = document.getElementById('slider-w');
+    const sliderH = document.getElementById('slider-h');
+    const sliderIpd = document.getElementById('slider-ipd');
+    const valW = document.getElementById('val-w');
+    const valH = document.getElementById('val-h');
+    const valIpd = document.getElementById('val-ipd');
+
     const retL = document.getElementById('reticle-l');
     const retR = document.getElementById('reticle-r');
     const fillL = document.getElementById('fill-l');
     const fillR = document.getElementById('fill-r');
 
-    let usingCustomVideo = false;
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      videoEl.src = url;
-      usingCustomVideo = true;
-      fileNameEl.textContent = `Loaded: ${file.name}`;
-    });
+    const cdL = document.getElementById('cd-l');
+    const cdR = document.getElementById('cd-r');
+    const cdNumL = document.getElementById('cd-num-l');
+    const cdNumR = document.getElementById('cd-num-r');
 
-    // Built-in Demo Cinema Canvas (used if user doesn't pick a local video)
+    // Stage & Stereo Calibration State
+    let stageW = 680;
+    let stageH = 360;
+    let ipdMm = 64;
+    let screenScaleMultiplier = 1.0;
+
+    // Renderer & Scene
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setScissorTest(true);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x040711);
+
+    // Raw Device Head Rig vs Re-Centered Theater Anchor
+    const rawHead = new THREE.Object3D();
+    const theaterAnchor = new THREE.Group();
+    scene.add(theaterAnchor);
+
+    const camLeft = new THREE.PerspectiveCamera(72, (stageW / 2) / stageH, 0.1, 120);
+    const camRight = new THREE.PerspectiveCamera(72, (stageW / 2) / stageH, 0.1, 120);
+    camLeft.position.set(-ipdMm / 2000, 0, 0);
+    camRight.position.set(ipdMm / 2000, 0, 0);
+    rawHead.add(camLeft, camRight);
+
+    function applyStageCalibration() {
+      stageW = Math.max(460, Math.min(window.innerWidth, stageW));
+      stageH = Math.max(260, Math.min(window.innerHeight, stageH));
+      ipdMm = Math.max(50, Math.min(76, ipdMm));
+
+      sliderW.value = stageW;
+      sliderH.value = stageH;
+      sliderIpd.value = ipdMm;
+      valW.textContent = stageW + ' px';
+      valH.textContent = stageH + ' px';
+      valIpd.textContent = ipdMm + ' mm';
+
+      vrStage.style.width = stageW + 'px';
+      vrStage.style.height = stageH + 'px';
+      renderer.setSize(stageW, stageH, false);
+
+      const halfAspect = (stageW / 2) / stageH;
+      camLeft.aspect = halfAspect;
+      camRight.aspect = halfAspect;
+      camLeft.position.x = -(ipdMm / 2000);
+      camRight.position.x = (ipdMm / 2000);
+      camLeft.updateProjectionMatrix();
+      camRight.updateProjectionMatrix();
+    }
+
+    sliderW.addEventListener('input', () => { stageW = parseInt(sliderW.value, 10); applyStageCalibration(); });
+    sliderH.addEventListener('input', () => { stageH = parseInt(sliderH.value, 10); applyStageCalibration(); });
+    sliderIpd.addEventListener('input', () => { ipdMm = parseInt(sliderIpd.value, 10); applyStageCalibration(); });
+
+    // Built-In Animated Demo Canvas (if user hasn't picked a file yet)
     const demoCanvas = document.createElement('canvas');
     demoCanvas.width = 1280;
     demoCanvas.height = 720;
     const demoCtx = demoCanvas.getContext('2d');
     const demoTexture = new THREE.CanvasTexture(demoCanvas);
-    demoTexture.minFilter = THREE.LinearFilter;
-    demoTexture.magFilter = THREE.LinearFilter;
+    let usingCustomVideo = false;
+    let demoPlaying = true;
 
-    let videoTexture = null;
-    let isPlaying = true;
-    let demoTime = 0;
-
-    function updateDemoReel(dt) {
-      if (isPlaying) demoTime += dt;
+    function drawDemoFrame(timeSec) {
       const w = demoCanvas.width, h = demoCanvas.height;
       const grad = demoCtx.createLinearGradient(0, 0, w, h);
-      const hue1 = (demoTime * 18) % 360;
-      const hue2 = (hue1 + 70) % 360;
-      grad.addColorStop(0, `hsl(${hue1}, 75%, 18%)`);
-      grad.addColorStop(1, `hsl(${hue2}, 80%, 10%)`);
+      grad.addColorStop(0, '#091124');
+      grad.addColorStop(0.5, '#1e1b4b');
+      grad.addColorStop(1, '#0f172a');
       demoCtx.fillStyle = grad;
       demoCtx.fillRect(0, 0, w, h);
 
-      // Animated horizon & stars
-      demoCtx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+      demoCtx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
       demoCtx.lineWidth = 2;
-      for (let i = 0; i < 12; i++) {
-        const y = h * 0.55 + Math.pow(i / 12, 1.8) * (h * 0.45);
+      for (let i = 0; i < 6; i++) {
+        const radius = 80 + i * 55 + Math.sin(timeSec * 2 + i) * 15;
         demoCtx.beginPath();
-        demoCtx.moveTo(0, y);
-        demoCtx.lineTo(w, y);
+        demoCtx.arc(w / 2, h / 2, radius, 0, Math.PI * 2);
         demoCtx.stroke();
       }
 
-      // Glowing sun
-      const sunY = h * 0.48 + Math.sin(demoTime * 0.8) * 20;
-      const sunGrad = demoCtx.createRadialGradient(w / 2, sunY, 10, w / 2, sunY, 140);
-      sunGrad.addColorStop(0, '#fde047');
-      sunGrad.addColorStop(0.5, '#f97316');
-      sunGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
-      demoCtx.fillStyle = sunGrad;
-      demoCtx.beginPath();
-      demoCtx.arc(w / 2, sunY, 140, 0, Math.PI * 2);
-      demoCtx.fill();
-
-      // Title overlay
-      demoCtx.fillStyle = '#ffffff';
-      demoCtx.font = 'bold 44px -apple-system, sans-serif';
+      demoCtx.fillStyle = '#f8fafc';
+      demoCtx.font = 'bold 54px -apple-system, sans-serif';
       demoCtx.textAlign = 'center';
-      demoCtx.fillText('VR HOME THEATER DEMO REEL', w / 2, 130);
-      demoCtx.font = '24px -apple-system, sans-serif';
-      demoCtx.fillStyle = '#cbd5e1';
-      demoCtx.fillText(isPlaying ? 'NOW PLAYING • LOOK DOWN AT CONTROLS FOR 1.5s' : 'PAUSED', w / 2, 175);
+      demoCtx.fillText('VR HOME THEATER', w / 2, h / 2 - 20);
 
+      demoCtx.fillStyle = '#38bdf8';
+      demoCtx.font = '600 26px -apple-system, sans-serif';
+      demoCtx.fillText('Supports 9:16 TikTok & 16:9 Videos • Look at Controls Below', w / 2, h / 2 + 34);
       demoTexture.needsUpdate = true;
     }
 
-    // Three.js Renderer & Scene
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setScissorTest(true);
+    // Dynamic Aspect-Ratio Cinema Screen (No Stretching!)
+    const SCREEN_DIST = 11.5;
+    let screenMesh = null;
+    let frameMesh = null;
+    const screenMaterial = new THREE.MeshBasicMaterial({ map: demoTexture });
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x04050a);
-
-    // Stereo Head Rig + Yaw Centering Offset Group
-    const IPD = 0.064;
-    const centerOffsetGroup = new THREE.Group(); // Used for "Re-Center View"
-    scene.add(centerOffsetGroup);
-
-    const headGroup = new THREE.Group();
-    headGroup.position.set(0, 1.6, 0);
-    centerOffsetGroup.add(headGroup);
-
-    const camLeft = new THREE.PerspectiveCamera(75, (window.innerWidth / 2) / window.innerHeight, 0.1, 100);
-    camLeft.position.x = -IPD / 2;
-    const camRight = new THREE.PerspectiveCamera(75, (window.innerWidth / 2) / window.innerHeight, 0.1, 100);
-    camRight.position.x = IPD / 2;
-    headGroup.add(camLeft, camRight);
-
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x334155, 0.9);
-    const screenGlow = new THREE.PointLight(0x38bdf8, 1.4, 25);
-    screenGlow.position.set(0, 3.5, -7);
-    scene.add(ambientLight, screenGlow);
-
-    // Curved Cinema Screen (16:9)
-    function createCurvedScreenGeometry(radius, height, arcAngle, segW, segH) {
-      const geo = new THREE.PlaneGeometry(radius * arcAngle, height, segW, segH);
-      const pos = geo.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const theta = x / radius;
-        pos.setX(i, Math.sin(theta) * radius);
-        pos.setZ(i, -Math.cos(theta) * radius);
+    function rebuildScreenForAspect(aspectRatio) {
+      if (screenMesh) {
+        theaterAnchor.remove(screenMesh);
+        screenMesh.geometry.dispose();
       }
-      geo.computeVertexNormals();
-      return geo;
+      if (frameMesh) {
+        theaterAnchor.remove(frameMesh);
+        frameMesh.geometry.dispose();
+      }
+
+      // Compute balanced width & height for any aspect ratio (e.g., 9:16 = 0.5625, 16:9 = 1.777)
+      let baseW, baseH;
+      if (aspectRatio < 1.0) {
+        // Portrait video (like 9:16 TikTok/Reels): fill vertical field of view cleanly
+        baseH = 7.4 * screenScaleMultiplier;
+        baseW = baseH * aspectRatio;
+      } else {
+        // Landscape video (16:9 / 21:9)
+        baseW = 12.2 * screenScaleMultiplier;
+        baseH = baseW / aspectRatio;
+      }
+
+      const geo = new THREE.PlaneGeometry(baseW, baseH);
+      screenMesh = new THREE.Mesh(geo, screenMaterial);
+      screenMesh.position.set(0, 0.5, -SCREEN_DIST);
+      theaterAnchor.add(screenMesh);
+
+      const frameGeo = new THREE.PlaneGeometry(baseW + 0.35, baseH + 0.35);
+      const frameMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+      frameMesh = new THREE.Mesh(frameGeo, frameMat);
+      frameMesh.position.set(0, 0.5, -SCREEN_DIST - 0.04);
+      theaterAnchor.add(frameMesh);
     }
 
-    const screenGeo = createCurvedScreenGeometry(10.5, 5.8, 0.98, 40, 1);
-    const screenMat = new THREE.MeshBasicMaterial({ map: demoTexture });
-    const screenMesh = new THREE.Mesh(screenGeo, screenMat);
-    screenMesh.position.set(0, 3.3, 0);
-    scene.add(screenMesh);
+    let currentAspect = 16 / 9;
+    rebuildScreenForAspect(currentAspect);
 
-    // Screen Frame
-    const frameGeo = createCurvedScreenGeometry(10.55, 6.15, 1.01, 40, 1);
-    const frameMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-    frameMesh.position.set(0, 3.3, 0);
-    scene.add(frameMesh);
-
-    // Theater Environments (3 Themes)
-    const theaterGroup = new THREE.Group();
-    scene.add(theaterGroup);
-
-    let currentThemeIndex = 0;
-    const themes = ['IMAX CINEMA', 'VOID SPACE', 'COZY LOUNGE'];
-
-    function buildTheaterEnvironment(themeName) {
-      while (theaterGroup.children.length > 0) {
-        theaterGroup.remove(theaterGroup.children[0]);
-      }
-
-      if (themeName === 'IMAX CINEMA') {
-        scene.background = new THREE.Color(0x05060b);
-        scene.fog = new THREE.FogExp2(0x05060b, 0.03);
-        screenGlow.color.setHex(0x38bdf8);
-
-        // Tiered theater floor & red seats
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(24, 26),
-          new THREE.MeshStandardMaterial({ color: 0x11131c, roughness: 0.9 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        theaterGroup.add(floor);
-
-        // Side acoustic walls with warm LED strips
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x0d101b, roughness: 0.8 });
-        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 26), wallMat);
-        leftWall.position.set(-11, 4.5, -2);
-        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 26), wallMat);
-        rightWall.position.set(11, 4.5, -2);
-        theaterGroup.add(leftWall, rightWall);
-
-        const stripMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
-        [-8, -4, 0, 4].forEach(z => {
-          const sL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.5, 0.12), stripMat);
-          sL.position.set(-10.75, 3.5, z);
-          const sR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6.5, 0.12), stripMat);
-          sR.position.set(10.75, 3.5, z);
-          theaterGroup.add(sL, sR);
-        });
-
-        // Rows of cinema seats in front
-        const seatMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.7 });
-        for (let row = 1; row <= 3; row++) {
-          const z = -row * 1.9;
-          const y = 0.45 - row * 0.12;
-          for (let col = -4; col <= 4; col++) {
-            const seat = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.8, 0.6), seatMat);
-            seat.position.set(col * 1.05, y, z);
-            theaterGroup.add(seat);
-          }
+    // Handle Local Video Selection & Automatic Aspect Detection
+    let videoTexture = null;
+    videoInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      fileLabel.textContent = file.name;
+      const url = URL.createObjectURL(file);
+      videoEl.src = url;
+      videoEl.load();
+      videoEl.onloadedmetadata = () => {
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+          currentAspect = videoEl.videoWidth / videoEl.videoHeight;
+          rebuildScreenForAspect(currentAspect);
         }
-      } else if (themeName === 'VOID SPACE') {
-        scene.background = new THREE.Color(0x010206);
-        scene.fog = null;
-        screenGlow.color.setHex(0x818cf8);
-
-        // Starfield dome
-        const starGeo = new THREE.BufferGeometry();
-        const starCount = 900;
-        const positions = new Float32Array(starCount * 3);
-        for (let i = 0; i < starCount * 3; i += 3) {
-          const r = 28 + Math.random() * 25;
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
-          positions[i] = r * Math.sin(phi) * Math.cos(theta);
-          positions[i + 1] = r * Math.cos(phi);
-          positions[i + 2] = r * Math.sin(phi) * Math.sin(theta);
-        }
-        starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.22 }));
-        theaterGroup.add(stars);
-
-        // Subtle floating platform beneath viewer
-        const deck = new THREE.Mesh(
-          new THREE.RingGeometry(1.2, 2.6, 36),
-          new THREE.MeshBasicMaterial({ color: 0x1e293b, side: THREE.DoubleSide })
-        );
-        deck.rotation.x = -Math.PI / 2;
-        deck.position.y = 0.01;
-        theaterGroup.add(deck);
-      } else if (themeName === 'COZY LOUNGE') {
-        scene.background = new THREE.Color(0x140e0a);
-        scene.fog = new THREE.FogExp2(0x140e0a, 0.025);
-        screenGlow.color.setHex(0xfbbf24);
-
-        // Warm wood floor & rug
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(18, 20),
-          new THREE.MeshStandardMaterial({ color: 0x3f2312, roughness: 0.65 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        theaterGroup.add(floor);
-
-        const rug = new THREE.Mesh(
-          new THREE.PlaneGeometry(7, 8),
-          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.95 })
-        );
-        rug.rotation.x = -Math.PI / 2;
-        rug.position.set(0, 0.02, -3);
-        theaterGroup.add(rug);
-
-        // Warm walls & ceiling
-        const roomMat = new THREE.MeshStandardMaterial({ color: 0x291a12, side: THREE.BackSide });
-        const room = new THREE.Mesh(new THREE.BoxGeometry(18, 8, 22), roomMat);
-        room.position.set(0, 4, -2);
-        theaterGroup.add(room);
-
-        // Side table & glowing lamp
-        const table = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.55, 0.55, 0.7, 20),
-          new THREE.MeshStandardMaterial({ color: 0x451a03 })
-        );
-        table.position.set(-2.2, 0.35, -1.5);
-        const lampShade = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.22, 0.35, 0.4, 16),
-          new THREE.MeshBasicMaterial({ color: 0xfde68a })
-        );
-        lampShade.position.set(-2.2, 0.95, -1.5);
-        theaterGroup.add(table, lampShade);
-      }
-    }
-
-    buildTheaterEnvironment(themes[currentThemeIndex]);
-
-    // 3D Floating Control Bar Below Screen (1.5s Gaze Activated)
-    const controlButtons = [];
-    const controlGroup = new THREE.Group();
-    controlGroup.position.set(0, 0.45, -6.5);
-    controlGroup.rotation.x = -0.22;
-    scene.add(controlGroup);
-
-    function makeButtonTexture(label, sublabel, bg = '#0f172a', accent = '#38bdf8') {
-      const c = document.createElement('canvas');
-      c.width = 360;
-      c.height = 140;
-      const ctx = c.getContext('2d');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, c.width, c.height);
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 8;
-      ctx.strokeRect(4, 4, c.width - 8, c.height - 8);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 34px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, c.width / 2, 64);
-
-      if (sublabel) {
-        ctx.fillStyle = accent;
-        ctx.font = 'bold 20px -apple-system, sans-serif';
-        ctx.fillText(sublabel, c.width / 2, 106);
-      }
-      const tex = new THREE.CanvasTexture(c);
-      tex.minFilter = THREE.LinearFilter;
-      return tex;
-    }
-
-    const buttonSpecs = [
-      { id: 'rewind',   x: -3.3, label: '<< -15s',     sub: 'REWIND' },
-      { id: 'play',     x: -1.65, label: 'PLAY / PAUSE', sub: 'TOGGLE' },
-      { id: 'recenter', x: 0,    label: 'RE-CENTER',   sub: 'ALIGN VIEW' },
-      { id: 'theater',  x: 1.65, label: 'THEATER',     sub: themes[0] },
-      { id: 'screen',   x: 3.3,  label: 'SCREEN SIZE', sub: 'NORMAL / IMAX' }
-    ];
-
-    buttonSpecs.forEach(spec => {
-      const geo = new THREE.PlaneGeometry(1.48, 0.58);
-      const tex = makeButtonTexture(spec.label, spec.sub);
-      const mat = new THREE.MeshBasicMaterial({ map: tex });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(spec.x, 0, 0);
-      mesh.userData = { id: spec.id, spec };
-      controlGroup.add(mesh);
-      controlButtons.push(mesh);
+        videoTexture = new THREE.VideoTexture(videoEl);
+        videoTexture.minFilter = THREE.LinearFilter;
+        videoTexture.magFilter = THREE.LinearFilter;
+        screenMaterial.map = videoTexture;
+        screenMaterial.needsUpdate = true;
+        usingCustomVideo = true;
+      };
     });
 
-    function refreshButtonLabel(id, label, sub, accent = '#38bdf8') {
-      const btn = controlButtons.find(b => b.userData.id === id);
-      if (!btn) return;
-      btn.material.map.dispose();
-      btn.material.map = makeButtonTexture(label, sub, '#0f172a', accent);
-      btn.material.needsUpdate = true;
+    // 3 Switchable Theater Environments
+    const envGroups = {
+      imax: new THREE.Group(),
+      void: new THREE.Group(),
+      lounge: new THREE.Group()
+    };
+    theaterAnchor.add(envGroups.imax, envGroups.void, envGroups.lounge);
+
+    // 1. IMAX Cinema Environment
+    (() => {
+      const g = envGroups.imax;
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(26, 26),
+        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -3.4;
+      g.add(floor);
+
+      const stripMat = new THREE.MeshBasicMaterial({ color: 0x2563eb });
+      [-10.5, 10.5].forEach(x => {
+        for (let z = -10; z <= 4; z += 3.5) {
+          const strip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 6.5, 0.25), stripMat);
+          strip.position.set(x, 0.2, z);
+          g.add(strip);
+        }
+      });
+
+      const seatMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
+      for (let row = 0; row < 3; row++) {
+        for (let col = -4; col <= 4; col++) {
+          if (row === 1 && col === 0) continue;
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.9, 0.7), seatMat);
+          seat.position.set(col * 1.15, -2.8 + row * 0.45, -3.5 + row * 1.8);
+          g.add(seat);
+        }
+      }
+      const light = new THREE.PointLight(0x93c5fd, 1.3, 30);
+      light.position.set(0, 5, -4);
+      g.add(light, new THREE.AmbientLight(0x334155, 0.9));
+    })();
+
+    // 2. Void Space Starfield
+    (() => {
+      const g = envGroups.void;
+      const starGeo = new THREE.BufferGeometry();
+      const count = 900;
+      const pos = new Float32Array(count * 3);
+      for (let i = 0; i < count * 3; i++) {
+        pos[i] = (Math.random() - 0.5) * 90;
+      }
+      starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xe0f2fe, size: 0.22 }));
+      g.add(stars);
+    })();
+
+    // 3. Cozy Lounge Environment
+    (() => {
+      const g = envGroups.lounge;
+      const rug = new THREE.Mesh(
+        new THREE.PlaneGeometry(16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x3f2e3e, roughness: 0.95 })
+      );
+      rug.rotation.x = -Math.PI / 2;
+      rug.position.y = -3.0;
+      g.add(rug);
+
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(22, 11, 22),
+        new THREE.MeshStandardMaterial({ color: 0x1e1b18, side: THREE.BackSide, roughness: 0.9 })
+      );
+      wall.position.set(0, 1.5, -2);
+      g.add(wall);
+
+      const warmLight = new THREE.PointLight(0xfbbf24, 1.4, 28);
+      warmLight.position.set(-5, 3, -5);
+      g.add(warmLight, new THREE.AmbientLight(0x451a03, 0.8));
+    })();
+
+    const theaterNames = ['imax', 'void', 'lounge'];
+    const theaterLabels = { imax: 'THEATER: IMAX', void: 'THEATER: VOID', lounge: 'THEATER: LOUNGE' };
+    let currentTheaterIdx = 0;
+
+    function setTheater(idx) {
+      currentTheaterIdx = idx % theaterNames.length;
+      const activeKey = theaterNames[currentTheaterIdx];
+      theaterNames.forEach(k => { envGroups[k].visible = (k === activeKey); });
+    }
+    setTheater(0);
+
+    // 3D Gaze Control Bar & In-Theater Settings Panel
+    const gazeButtons = [];
+    const mainBarGroup = new THREE.Group();
+    const settingsPanelGroup = new THREE.Group();
+    settingsPanelGroup.visible = false;
+    theaterAnchor.add(mainBarGroup, settingsPanelGroup);
+
+    function createGazeButton(parentGroup, id, labelText, x, y, z, width = 1.65, height = 0.62) {
+      const btnCanvas = document.createElement('canvas');
+      btnCanvas.width = 340;
+      btnCanvas.height = 128;
+      const ctx = btnCanvas.getContext('2d');
+      const tex = new THREE.CanvasTexture(btnCanvas);
+
+      function drawBtn(hovered = false, newLabel = null) {
+        if (newLabel !== null) labelText = newLabel;
+        ctx.clearRect(0, 0, 340, 128);
+        ctx.fillStyle = hovered ? 'rgba(56, 189, 248, 0.35)' : 'rgba(15, 23, 42, 0.9)';
+        ctx.strokeStyle = hovered ? '#38bdf8' : 'rgba(148, 163, 184, 0.5)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.roundRect(6, 6, 328, 116, 24);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 28px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelText, 170, 64);
+        tex.needsUpdate = true;
+      }
+      drawBtn(false);
+
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, height),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+      );
+      mesh.position.set(x, y, z);
+      mesh.lookAt(0, 0, 0);
+      mesh.userData = { id, drawBtn, parentGroup };
+      parentGroup.add(mesh);
+      gazeButtons.push(mesh);
+      return mesh;
     }
 
-    // Centering Function (Aligns screen & controls directly in front of current head gaze)
-    function recenterView() {
-      const worldDir = new THREE.Vector3();
-      headGroup.getWorldDirection(worldDir);
-      worldDir.negate(); // Forward direction of camera
-      const currentYaw = Math.atan2(-worldDir.x, -worldDir.z);
-      centerOffsetGroup.rotation.y -= currentYaw;
+    // Main Control Row (Bottom)
+    const btnPlay = createGazeButton(mainBarGroup, 'play', 'PAUSE', -3.6, -3.55, -9.5);
+    const btnRewind = createGazeButton(mainBarGroup, 'rewind', '-15 SEC', -1.8, -3.55, -9.8);
+    const btnTheater = createGazeButton(mainBarGroup, 'theater', 'THEATER: IMAX', 0.0, -3.55, -9.9);
+    const btnSettings = createGazeButton(mainBarGroup, 'settings', '⚙ SETTINGS', 1.8, -3.55, -9.8);
+    const btnRecenter = createGazeButton(mainBarGroup, 'recenter', 'RE-CENTER (3s)', 3.6, -3.55, -9.5);
 
-      hudL.textContent = `${themes[currentThemeIndex]} • VIEW RE-CENTERED`;
-      hudR.textContent = `${themes[currentThemeIndex]} • VIEW RE-CENTERED`;
+    // In-Theater Gaze Settings Panel (Opens when gazing at ⚙ SETTINGS)
+    const btnIpdMinus = createGazeButton(settingsPanelGroup, 'ipd_minus', 'IPD -2mm', -2.7, -2.6, -9.4);
+    const btnIpdDisplay = createGazeButton(settingsPanelGroup, 'ipd_info', 'IPD: 64mm', -0.9, -2.6, -9.6);
+    const btnIpdPlus = createGazeButton(settingsPanelGroup, 'ipd_plus', 'IPD +2mm', 0.9, -2.6, -9.6);
+    const btnSizeToggle = createGazeButton(settingsPanelGroup, 'size', 'SCREEN: 1.0x', 2.7, -2.6, -9.4);
+
+    const btnLensMinus = createGazeButton(settingsPanelGroup, 'lens_minus', 'LENS GAP -', -2.7, -1.85, -9.4);
+    const btnLensDisplay = createGazeButton(settingsPanelGroup, 'lens_info', 'WIDTH: 680px', -0.9, -1.85, -9.6);
+    const btnLensPlus = createGazeButton(settingsPanelGroup, 'lens_plus', 'LENS GAP +', 0.9, -1.85, -9.6);
+    const btnCloseSettings = createGazeButton(settingsPanelGroup, 'close_settings', '✕ CLOSE', 2.7, -1.85, -9.4);
+
+    function refreshSettingsLabels() {
+      btnIpdDisplay.userData.drawBtn(false, `IPD: ${ipdMm}mm`);
+      btnLensDisplay.userData.drawBtn(false, `WIDTH: ${stageW}px`);
+      btnSizeToggle.userData.drawBtn(false, `SCREEN: ${screenScaleMultiplier.toFixed(1)}x`);
     }
 
-    let isBigScreen = false;
-    function triggerButtonAction(id) {
+    // 3-Second Re-Orient Countdown Logic
+    let reorientInterval = null;
+    function triggerReorientCountdown() {
+      if (reorientInterval) clearInterval(reorientInterval);
+      let remaining = 3;
+      cdNumL.textContent = remaining;
+      cdNumR.textContent = remaining;
+      cdL.style.display = 'block';
+      cdR.style.display = 'block';
+
+      reorientInterval = setInterval(() => {
+        remaining -= 1;
+        if (remaining > 0) {
+          cdNumL.textContent = remaining;
+          cdNumR.textContent = remaining;
+        } else {
+          clearInterval(reorientInterval);
+          reorientInterval = null;
+          cdL.style.display = 'none';
+          cdR.style.display = 'none';
+          // Snap entire theater directly to current head orientation
+          theaterAnchor.quaternion.copy(rawHead.quaternion);
+        }
+      }, 1000);
+    }
+
+    function executeButtonAction(id) {
       if (id === 'play') {
         if (usingCustomVideo) {
-          if (videoEl.paused) { videoEl.play(); isPlaying = true; }
-          else { videoEl.pause(); isPlaying = false; }
+          if (videoEl.paused) {
+            videoEl.play();
+            btnPlay.userData.drawBtn(false, 'PAUSE');
+          } else {
+            videoEl.pause();
+            btnPlay.userData.drawBtn(false, 'PLAY');
+          }
         } else {
-          isPlaying = !isPlaying;
+          demoPlaying = !demoPlaying;
+          btnPlay.userData.drawBtn(false, demoPlaying ? 'PAUSE' : 'PLAY');
         }
-        refreshButtonLabel('play', isPlaying ? 'PAUSE' : 'PLAY', isPlaying ? 'PLAYING' : 'PAUSED', '#22c55e');
       } else if (id === 'rewind') {
         if (usingCustomVideo) {
           videoEl.currentTime = Math.max(0, videoEl.currentTime - 15);
-        } else {
-          demoTime = Math.max(0, demoTime - 15);
         }
-        refreshButtonLabel('rewind', '<< -15s', 'REWINDED!', '#f59e0b');
-        setTimeout(() => refreshButtonLabel('rewind', '<< -15s', 'REWIND'), 900);
-      } else if (id === 'recenter') {
-        recenterView();
-        refreshButtonLabel('recenter', 'RE-CENTER', 'CENTERED!', '#22c55e');
-        setTimeout(() => refreshButtonLabel('recenter', 'RE-CENTER', 'ALIGN VIEW'), 1000);
       } else if (id === 'theater') {
-        currentThemeIndex = (currentThemeIndex + 1) % themes.length;
-        const nextTheme = themes[currentThemeIndex];
-        buildTheaterEnvironment(nextTheme);
-        refreshButtonLabel('theater', 'THEATER', nextTheme, '#a855f7');
-        hudL.textContent = `${nextTheme} • GAZE 1.5s TO CLICK`;
-        hudR.textContent = `${nextTheme} • GAZE 1.5s TO CLICK`;
-      } else if (id === 'screen') {
-        isBigScreen = !isBigScreen;
-        const scale = isBigScreen ? 1.32 : 1.0;
-        screenMesh.scale.set(scale, scale, 1);
-        frameMesh.scale.set(scale, scale, 1);
-        screenMesh.position.y = isBigScreen ? 3.8 : 3.3;
-        frameMesh.position.y = isBigScreen ? 3.8 : 3.3;
-        refreshButtonLabel('screen', 'SCREEN SIZE', isBigScreen ? 'GIANT IMAX' : 'STANDARD', '#38bdf8');
+        setTheater(currentTheaterIdx + 1);
+        btnTheater.userData.drawBtn(false, theaterLabels[theaterNames[currentTheaterIdx]]);
+      } else if (id === 'settings') {
+        settingsPanelGroup.visible = !settingsPanelGroup.visible;
+        refreshSettingsLabels();
+      } else if (id === 'close_settings') {
+        settingsPanelGroup.visible = false;
+      } else if (id === 'ipd_minus') {
+        ipdMm -= 2;
+        applyStageCalibration();
+        refreshSettingsLabels();
+      } else if (id === 'ipd_plus') {
+        ipdMm += 2;
+        applyStageCalibration();
+        refreshSettingsLabels();
+      } else if (id === 'lens_minus') {
+        stageW -= 30;
+        applyStageCalibration();
+        refreshSettingsLabels();
+      } else if (id === 'lens_plus') {
+        stageW += 30;
+        applyStageCalibration();
+        refreshSettingsLabels();
+      } else if (id === 'size') {
+        screenScaleMultiplier = screenScaleMultiplier >= 1.35 ? 0.85 : +(screenScaleMultiplier + 0.25).toFixed(2);
+        rebuildScreenForAspect(currentAspect);
+        refreshSettingsLabels();
+      } else if (id === 'recenter') {
+        triggerReorientCountdown();
       }
     }
 
-    // Device Orientation Head Tracking (iPadOS & Mobile)
-    let deviceAlpha = 0, deviceBeta = 0, deviceGamma = 0;
-    let screenOrientation = 0;
+    // Gyroscope & Touch-Drag Head Tracking
     let gyroActive = false;
-
+    let alpha = 0, beta = 0, gamma = 0;
     const zee = new THREE.Vector3(0, 0, 1);
     const euler = new THREE.Euler();
     const q0 = new THREE.Quaternion();
     const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
-    function updateScreenOrientation() {
-      screenOrientation = (window.screen && window.screen.orientation)
-        ? window.screen.orientation.angle
-        : (window.orientation || 0);
-    }
-    window.addEventListener('orientationchange', updateScreenOrientation);
-    updateScreenOrientation();
-
     function onDeviceOrientation(e) {
       if (e.alpha === null) return;
-      const firstReading = !gyroActive;
       gyroActive = true;
-      deviceAlpha = THREE.MathUtils.degToRad(e.alpha);
-      deviceBeta  = THREE.MathUtils.degToRad(e.beta);
-      deviceGamma = THREE.MathUtils.degToRad(e.gamma);
-      if (firstReading) {
-        applyHeadRotation();
-        recenterView(); // Auto-center screen right in front of user on start
-      }
+      alpha = THREE.MathUtils.degToRad(e.alpha);
+      beta  = THREE.MathUtils.degToRad(e.beta);
+      gamma = THREE.MathUtils.degToRad(e.gamma);
     }
 
-    function applyHeadRotation() {
+    function updateHeadTracking() {
       if (!gyroActive) return;
-      const orient = THREE.MathUtils.degToRad(screenOrientation);
-      euler.set(deviceBeta, deviceAlpha, -deviceGamma, 'YXZ');
-      headGroup.quaternion.setFromEuler(euler);
-      headGroup.quaternion.multiply(q1);
-      headGroup.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
+      const screenAngle = (window.screen && window.screen.orientation)
+        ? window.screen.orientation.angle
+        : (window.orientation || 0);
+      const orient = THREE.MathUtils.degToRad(screenAngle);
+
+      euler.set(beta, alpha, -gamma, 'YXZ');
+      rawHead.quaternion.setFromEuler(euler);
+      rawHead.quaternion.multiply(q1);
+      rawHead.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
     }
 
-    // Touch-drag fallback when testing without sensors
-    let isDragging = false, prevX = 0, prevY = 0, yaw = 0, pitch = 0;
-    window.addEventListener('pointerdown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
-    window.addEventListener('pointerup', () => { isDragging = false; });
+    // Touch-drag fallback for desktop testing
+    let dragging = false, prevX = 0, prevY = 0, yaw = 0, pitch = 0;
+    vrStage.addEventListener('pointerdown', e => { dragging = true; prevX = e.clientX; prevY = e.clientY; });
+    window.addEventListener('pointerup', () => { dragging = false; });
     window.addEventListener('pointermove', e => {
-      if (!isDragging || gyroActive) return;
+      if (!dragging || gyroActive) return;
       yaw -= (e.clientX - prevX) * 0.005;
       pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - prevY) * 0.005));
       prevX = e.clientX; prevY = e.clientY;
-      headGroup.rotation.set(pitch, yaw, 0, 'YXZ');
+      rawHead.rotation.set(pitch, yaw, 0, 'YXZ');
     });
 
-    // Enter VR & Request iPadOS Sensor Permission
-    startBtn.addEventListener('click', async () => {
+    // Enter VR & Request iPadOS Motion Permission
+    enterBtn.addEventListener('click', async () => {
+      applyStageCalibration();
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
       }
 
-      if (usingCustomVideo) {
-        videoTexture = new THREE.VideoTexture(videoEl);
-        videoTexture.minFilter = THREE.LinearFilter;
-        videoTexture.magFilter = THREE.LinearFilter;
-        screenMat.map = videoTexture;
-        screenMat.needsUpdate = true;
-        videoEl.play().catch(() => {});
-      }
+      const startExperience = () => {
+        overlay.style.display = 'none';
+        if (usingCustomVideo) {
+          videoEl.play().catch(() => {});
+          btnPlay.userData.drawBtn(false, 'PAUSE');
+        }
+        triggerReorientCountdown();
+      };
 
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
-          const response = await DeviceOrientationEvent.requestPermission();
-          if (response === 'granted') {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm === 'granted') {
             window.addEventListener('deviceorientation', onDeviceOrientation);
-            overlay.style.display = 'none';
+            startExperience();
           } else {
-            statusEl.textContent = 'Permission denied. Ensure this page is opened over HTTPS and Safari Motion & Orientation Access is ON.';
+            statusEl.textContent = 'Motion permission denied. Check iPad Settings > Safari > Motion & Orientation Access.';
           }
         } catch (err) {
-          statusEl.textContent = 'Sensors blocked by browser frame. Open this standalone HTML over HTTPS to unlock head tracking.';
+          statusEl.textContent = 'Blocked: Open this page directly via HTTPS (not inside an embedded preview frame).';
         }
       } else {
         window.addEventListener('deviceorientation', onDeviceOrientation);
-        overlay.style.display = 'none';
+        startExperience();
       }
     });
 
-    // 1.5 Second Gaze Raycaster for Theater Controls
+    reopenSetupBtn.addEventListener('click', () => {
+      overlay.style.display = 'flex';
+    });
+
+    // 1.5-Second Gaze Raycaster
     const raycaster = new THREE.Raycaster();
-    const camWorldPos = new THREE.Vector3();
-    const camWorldDir = new THREE.Vector3();
-    let gazeTimer = 0;
+    const lookDir = new THREE.Vector3();
     let hoveredBtn = null;
-    let cooldown = 0;
-    const GAZE_DURATION = 1.5; // 1.5 seconds
+    let gazeElapsed = 0;
+    const GAZE_DURATION = 1.5;
 
-    function updateGazeControls(dt) {
-      if (cooldown > 0) {
-        cooldown -= dt;
-        return;
-      }
+    function updateGaze(dt) {
+      rawHead.getWorldDirection(lookDir);
+      lookDir.negate();
+      raycaster.set(rawHead.position, lookDir);
 
-      headGroup.getWorldPosition(camWorldPos);
-      headGroup.getWorldDirection(camWorldDir);
-      camWorldDir.negate(); // Camera looks down -Z
-      raycaster.set(camWorldPos, camWorldDir);
-
-      const hits = raycaster.intersectObjects(controlButtons);
+      // Only intersect visible buttons
+      const activeButtons = gazeButtons.filter(b => b.userData.parentGroup.visible);
+      const hits = raycaster.intersectObjects(activeButtons);
       if (hits.length > 0) {
         const hitMesh = hits[0].object;
-        if (hoveredBtn === hitMesh) {
-          gazeTimer += dt;
-        } else {
+        if (hoveredBtn !== hitMesh) {
+          if (hoveredBtn) hoveredBtn.userData.drawBtn(false);
           hoveredBtn = hitMesh;
-          gazeTimer = 0;
+          hoveredBtn.userData.drawBtn(true);
+          gazeElapsed = 0;
+        } else {
+          gazeElapsed += dt;
         }
 
-        const progress = Math.min(1, gazeTimer / GAZE_DURATION);
+        const pct = Math.min(1, gazeElapsed / GAZE_DURATION);
         retL.classList.add('locking');
         retR.classList.add('locking');
-        fillL.style.transform = `scale(${progress})`;
-        fillR.style.transform = `scale(${progress})`;
+        fillL.style.transform = `scale(${pct})`;
+        fillR.style.transform = `scale(${pct})`;
 
-        if (gazeTimer >= GAZE_DURATION) {
-          triggerButtonAction(hoveredBtn.userData.id);
-          gazeTimer = 0;
-          hoveredBtn = null;
-          cooldown = 0.6;
-          retL.classList.remove('locking');
-          retR.classList.remove('locking');
-          fillL.style.transform = 'scale(0)';
-          fillR.style.transform = 'scale(0)';
+        if (gazeElapsed >= GAZE_DURATION) {
+          executeButtonAction(hoveredBtn.userData.id);
+          gazeElapsed = 0;
         }
       } else {
-        hoveredBtn = null;
-        gazeTimer = 0;
+        if (hoveredBtn) {
+          hoveredBtn.userData.drawBtn(false);
+          hoveredBtn = null;
+        }
+        gazeElapsed = 0;
         retL.classList.remove('locking');
         retR.classList.remove('locking');
         fillL.style.transform = 'scale(0)';
@@ -632,42 +804,33 @@
       }
     }
 
-    // Handle Resize / Orientation Change
-    window.addEventListener('resize', () => {
-      const w = window.innerWidth, h = window.innerHeight;
-      renderer.setSize(w, h);
-      camLeft.aspect = (w / 2) / h;
-      camRight.aspect = (w / 2) / h;
-      camLeft.updateProjectionMatrix();
-      camRight.updateProjectionMatrix();
-    });
+    window.addEventListener('resize', applyStageCalibration);
+    applyStageCalibration();
 
-    // Main Stereo Render Loop
+    // Main Render Loop
     let lastTime = performance.now();
     function animate(now) {
       requestAnimationFrame(animate);
-      const dt = Math.min(0.1, (now - lastTime) / 1000);
+      const dt = (now - lastTime) / 1000;
       lastTime = now;
 
-      if (!usingCustomVideo) {
-        updateDemoReel(dt);
+      if (!usingCustomVideo && demoPlaying) {
+        drawDemoFrame(now / 1000);
       }
 
-      applyHeadRotation();
-      updateGazeControls(dt);
+      updateHeadTracking();
+      updateGaze(dt);
 
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      const halfW = Math.floor(w / 2);
+      const halfW = Math.floor(stageW / 2);
 
-      // Left Eye
-      renderer.setViewport(0, 0, halfW, h);
-      renderer.setScissor(0, 0, halfW, h);
+      // Left Eye Viewport
+      renderer.setViewport(0, 0, halfW, stageH);
+      renderer.setScissor(0, 0, halfW, stageH);
       renderer.render(scene, camLeft);
 
-      // Right Eye
-      renderer.setViewport(halfW, 0, w - halfW, h);
-      renderer.setScissor(halfW, 0, w - halfW, h);
+      // Right Eye Viewport
+      renderer.setViewport(halfW, 0, stageW - halfW, stageH);
+      renderer.setScissor(halfW, 0, stageW - halfW, stageH);
       renderer.render(scene, camRight);
     }
     animate(performance.now());
